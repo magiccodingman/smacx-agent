@@ -1367,3 +1367,11 @@ exclude reasoning and are not total generation input measurements. See
 Reasoning deployment checkpoint: rebuilt control/harness images pass installed
 checks; live source hashes match and control is healthy. AI - 6 is completed;
 no live improvement claim is made before the AI - 7 observation window.
+
+AI - 7 early live checkpoint: 81/81 requests deliver acknowledgement arguments
+and retain at most one reasoning segment; 12/12 acknowledgements succeed. Stale
+memory guard recovery succeeds explicitly. Spartan provider latency is lower in
+this sample; Peacekeeper latency is essentially unchanged. A generic invalid-plan
+error induces loss of binding, and a repair modifier is misread as combat defense.
+Those semantic gaps and broad performance/strategy acceptance remain open.
+See [thirty-minute review](benchmarks/ai7-thirty-minute-review.md).
