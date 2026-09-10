@@ -1455,3 +1455,10 @@ Settlement checkpoint 2: collector/journal/attention/base-query/restart integrat
 actual compiled public-access helper passes controlled Treaty/occupation/reservation/fog cases.
 Native mechanics still conditional; no exact post-founding border prediction. Deployment and
 installed-image checks remain pending. See the settlement acceptance evidence above.
+
+Settlement checkpoint 3: isolated native read restoration, tested hidden-input independence,
+and real founding-center prediction/effect comparison passed. Four-candidate provider payload
+is 1,481 conservative tokens. Existing managed action, opaque execution, recovery, global
+pipeline, runtime context, geography and attention suites passed. Installed control module
+hash matches source. This does not establish exact border effects or autonomous strategic
+quality; those remain explicitly unclaimed. See [acceptance JSON](benchmarks/settlement-assistance.json).

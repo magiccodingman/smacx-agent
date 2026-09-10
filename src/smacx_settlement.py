@@ -70,7 +70,7 @@ def shortlist(receipts, purpose, limit=4):
     if not rows:
         return []
     order = [3, 0, 1] if purpose == 'coastal_access' else [1, 0, 2] if purpose == 'production' else [2, 0, 1] if purpose == 'expansion' else [0, 1, 2]
-    selected = []
+    selected = rows[:1] if purpose == 'strategic_outpost' else []
     for axis in order:
         row = max(rows, key=lambda r: (metrics(r)[axis], str(r.get('location_ref'))))
         if row not in selected:

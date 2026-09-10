@@ -1,0 +1,25 @@
+{
+  "native": {
+    "passed": true,
+    "native_state_restored": true,
+    "hidden_input_independence": true,
+    "founding_center_comparison": true,
+    "center_yields": {
+      "nutrients": 2,
+      "minerals": 1,
+      "energy": 1
+    }
+  },
+  "provider_fixture": {
+    "candidates": 4,
+    "conservative_tokens": 1481,
+    "bounded_native_calls": 2
+  },
+  "integration": "collector -> journal -> attention -> base query -> restart passed",
+  "limitations": [
+    "No exact post-founding border recomputation",
+    "No full net empire economic simulation",
+    "Fogged terrain potential does not establish workability",
+    "No autonomous campaign quality claim"
+  ]
+}

@@ -1120,6 +1120,11 @@ def _semanticize_choice(value: Any, context: Mapping[str, Any] | None) -> Any:
                 result[public_key] = ref
             continue
         result[str(key)] = _semanticize_choice(item, context)
+    if isinstance(result.get('settlement_context'), dict):
+        settlement = result['settlement_context']
+        settlement['meaning'] = ('Legal founding is not an economic assessment. Discover nearby alternatives with '
+            'smac_world mode=settlement using this colony or location as origin_ref; compare an exact site if preferred. '
+            'Strategic outposts may deliberately have weak economics.')
     return result
 
 
