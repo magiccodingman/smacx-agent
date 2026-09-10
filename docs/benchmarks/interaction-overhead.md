@@ -31,9 +31,9 @@ metrics and deployment are subsequent checkpoints and are not yet accepted.
 
 The managed decision path drains at most four native-reviewed notifications.
 Eligibility requires the exact reviewed-notification classification in the
-cached native catalog and exactly one executable acknowledgement. Generic
-engine-confirmed one-button popups, introductions without that classification,
-and strategic alternatives are not automated. Native whitelist/command guards
+cached native catalog and exactly one executable acknowledgement. The bridge's separately reviewed non-diplomatic faction-introduction classification
+is also eligible. Generic engine-confirmed one-button popups and strategic
+alternatives are not automated. Native whitelist/command guards
 remain unchanged. Captured public information, state and identity are journaled
 through durable attention before dispatch; capture failure prevents dismissal.
 The ordinary one-use native execution path is used. Rejection, queued work,
@@ -70,3 +70,8 @@ Installed-image checks additionally pass attention redelivery, restart, batch
 acknowledgement, unseen-item requeue, and one-use opaque-choice execution.
 The runtime-context fixture's former empty-batch invitation expectation is
 updated to the new contract; its cognitive-placement checks remain intact.
+
+Initial live acceptance: AI - 7 accepted an INTRO acknowledgement and returned
+a fresh executable post-action frame in the same result (about one second for
+the call). Recovery INTRO handling exposed the separately reviewed narrative
+classification; it is now included without admitting generic one-button dialogs.

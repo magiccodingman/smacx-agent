@@ -2913,10 +2913,12 @@ def smac_decision(
             choices = cached.get("choices") or {}
             eligible = [(cid, choice) for cid, choice in choices.items()
                 if choice.get("command") == "acknowledge_popup"
-                and choice.get("meaning") ==
-                    "Acknowledge this reviewed information-only game notification."]
+                and choice.get("meaning") in {
+                    "Acknowledge this reviewed information-only game notification.",
+                    "Acknowledge this information-only faction introduction."}]
         # This exact native classification comes only from the reviewed label
-        # whitelist. A generic one-button popup is deliberately insufficient.
+        # whitelist or the reviewed non-diplomatic INTRO classifier.
+        # A generic one-button popup is deliberately insufficient.
         if frame.get("focus", {}).get("kind") != "interaction" or len(choices) != 1 or len(eligible) != 1:
             return frame
         identity = frame.get("identity") or {}
