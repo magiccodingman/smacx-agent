@@ -1202,6 +1202,12 @@ def _unit_action_catalog_context(catalog: Mapping[str, Any],
     }
     if isinstance(catalog.get("at"), Mapping):
         result["at"] = _semanticize_choice(catalog["at"], context)
+    if any(isinstance(row, Mapping) and row.get("kind") == "tile_target_query"
+           and row.get("legal") is None for row in catalog.get("choices", ())):
+        result["destination_query"] = {
+            "tool": "smac_choices", "kind": "unit_actions",
+            "supply": ["own_unit_ref", "target_location_ref"],
+            "meaning": "For an intended known destination, query its persistent route choices. Order acceptance does not prove arrival; inspect interruption and later position. Individual moves remain available."}
     result["catalog_scope"] = {
         "exhaustive_for": "currently executable actions for this owned unit at this native revision",
         "not_evidence_of": [
@@ -2882,6 +2888,73 @@ def smac_decision(
     target_unit_ref: str = "",
     finish_ready_units: bool = False,
     detail: Literal["compact", "full"] = "compact",
+) -> dict:
+    notices = []
+    seen = set()
+    for _ in range(5):
+        frame = _decision_frame_once(own_unit_ref, target_location_ref,
+            target_unit_ref, finish_ready_units, detail)
+        if notices:
+            previous = next(iter(seen))
+            current = frame.get("identity") or {}
+            if current and (str(current.get("match_id") or ""), str(current.get("session_id") or "")) != previous[:2]:
+                return {"ok": False, "error": {"code": "notification_scope_changed"},
+                    "automatic_notifications": notices, "required_next": {"tool": "smac_decision"}}
+            frame["automatic_notifications"] = notices
+            notices[-1]["following_observation"] = {
+                "available": bool(frame.get("ok")),
+                "revision_changed": bool(current and str(current.get("revision")) != notices[-1].get("before_revision")),
+                "meaning": "A later observation does not by itself verify any pending game effect."}
+        if not MANAGED_ATTACHED or not frame.get("ok") or len(notices) >= 4:
+            return frame
+        decision_id = frame.get("decision_id")
+        with DECISION_LOCK:
+            cached = DECISION_CACHE.get(decision_id) or {}
+            choices = cached.get("choices") or {}
+            eligible = [(cid, choice) for cid, choice in choices.items()
+                if choice.get("command") == "acknowledge_popup"
+                and choice.get("meaning") ==
+                    "Acknowledge this reviewed information-only game notification."]
+        # This exact native classification comes only from the reviewed label
+        # whitelist. A generic one-button popup is deliberately insufficient.
+        if frame.get("focus", {}).get("kind") != "interaction" or len(choices) != 1 or len(eligible) != 1:
+            return frame
+        identity = frame.get("identity") or {}
+        marker = tuple(str(identity.get(k) or "") for k in ("match_id", "session_id", "revision"))
+        if marker in seen:
+            frame["notification_drain"] = {"status": "unchanged_observation", "automatic_retry": False}
+            return frame
+        seen.add(marker)
+        evidence = {"popup_label": frame["focus"].get("popup_label"),
+            "information": frame.get("information", []), "state": frame.get("state", {}),
+            "identity": identity, "turn": frame.get("turn"),
+            "meaning": "Reviewed notification captured before native dismissal; cognitive acknowledgement remains required. Any pending game effect requires later observation."}
+        try:
+            _, attention = _runtime_services()
+            projection = attention.world_store.load(attention.scope, attention.timeline_id)
+            if not projection or str(projection.get("action_revision")) != marker[2]:
+                return frame
+            item = attention.enqueue("game_notification", evidence,
+                observation_cursor=int(projection["observation_cursor"]),
+                session_id=marker[1], turn=frame.get("turn"),
+                dedupe_key="reviewed-notice:" + ":".join(marker))
+        except Exception:
+            # Do not dismiss evidence that could not first be durably captured.
+            frame["notification_drain"] = {"status": "capture_unavailable", "automatic_retry": False}
+            return frame
+        receipt = _public_execution_receipt(_execute_choice_once(decision_id, eligible[0][0]))
+        notices.append({"attention_id": item.get("attention_id"),
+            "popup_label": evidence["popup_label"], "receipt": receipt,
+            "before_revision": marker[2], "cognitively_acknowledged": False})
+        if not receipt.get("ok") or receipt.get("queued"):
+            return {"ok": bool(receipt.get("ok")), "automatic_notifications": notices,
+                "required_next": {"tool": "smac_decision", "reason": "Observe current state; dismissal was not verified. Do not replay the old handle."}}
+    return frame
+
+
+def _decision_frame_once(
+    own_unit_ref: str = "", target_location_ref: str = "", target_unit_ref: str = "",
+    finish_ready_units: bool = False, detail: str = "compact",
 ) -> dict:
     authority = _sovereign_gameplay_gate("Decision enumeration")
     if authority:

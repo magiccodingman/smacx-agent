@@ -554,6 +554,8 @@ def _bounded_attention(lease: Mapping[str, Any], *, token_budget: int) -> dict[s
             result["remaining_count"] = len(lease.get("items", ())) - len(result["items"])
             break
         result["items"].append(item)
+    if not result["items"]:
+        result.pop("acknowledgement", None)
     return result
 
 
@@ -779,6 +781,8 @@ class RuntimeContextAssembler:
         # transition to placed.  Anything removed by either local attention
         # budgeting or whole-envelope pressure is detached and requeued with
         # its original stable attention ID.
+        if not payload["attention"].get("items"):
+            payload["attention"].pop("acknowledgement", None)
         original_lease_count = len(attention_lease.get("items", ()))
         placement = self.attention.restrict_for_placement(
             str(payload["attention"]["attention_lease_id"]),

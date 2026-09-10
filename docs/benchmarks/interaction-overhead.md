@@ -26,3 +26,25 @@ not native effect equivalence or strategic quality. Live validation remains pend
 
 Automatic information-notice handling, movement discoverability audit, turn
 metrics and deployment are subsequent checkpoints and are not yet accepted.
+
+## Checkpoint 2: reviewed notification continuation
+
+The managed decision path drains at most four native-reviewed notifications.
+Eligibility requires the exact reviewed-notification classification in the
+cached native catalog and exactly one executable acknowledgement. Generic
+engine-confirmed one-button popups, introductions without that classification,
+and strategic alternatives are not automated. Native whitelist/command guards
+remain unchanged. Captured public information, state and identity are journaled
+through durable attention before dispatch; capture failure prevents dismissal.
+The ordinary one-use native execution path is used. Rejection, queued work,
+unchanged observation or scope change stop continuation. Later observation does
+not certify pending mechanics such as support-driven disbanding.
+
+`automatic_notification_test.py` proves orchestration ordering, four-dismissal
+bound, stop cases and preserved cognitive-acknowledgement obligation. Existing
+`decision_recovery_test.py` still passes. Native effect verification remains a
+live acceptance requirement. Movement audit found persistent destination queries
+already implemented; the native tile-target query now receives an explicit
+managed `own_unit_ref` / `target_location_ref` query hint. No automatic movement
+or strategic choice was added. Empty attention invitations are also removed when
+budgeting excludes every item; placement still requeues undelivered evidence.

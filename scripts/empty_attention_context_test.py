@@ -12,3 +12,5 @@ result=_bounded_attention(lease,token_budget=1000)
 assert result['acknowledgement']==lease['acknowledgement']
 assert result['items'][0]['payload']==lease['items'][0]['payload']
 print('empty acknowledgement suppressed; nonempty receipt and epistemic evidence retained')
+
+assert 'acknowledgement' not in _bounded_attention(lease,token_budget=1)
