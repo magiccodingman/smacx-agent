@@ -102,9 +102,10 @@ MATCH_BRIEFING_RESUME_NOTICES: set[tuple[str, str]] = set()
 MATCH_BRIEFING_LOCK = threading.Lock()
 DECISION_CACHE: dict[str, dict] = {}
 DECISION_LOCK = threading.Lock()
-# A measured provider response took 181.4 seconds. Allow bounded reasoning
-# latency; execution still requires the original native revision and guards.
-DECISION_TTL_SECONDS = 300.0
+# Handles must survive one allowed provider generation plus dispatch overhead.
+# Native revision/session/legality and one-use checks still gate every execution.
+from smacx_provider_watchdog import DECISION_HANDLE_SECONDS
+DECISION_TTL_SECONDS = float(DECISION_HANDLE_SECONDS)
 CHOICE_PREPARATIONS = ChoicePreparations(ttl=DECISION_TTL_SECONDS)
 AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
 AIRDROP_RECEIPT_LOCK = threading.Lock()
@@ -3730,6 +3731,7 @@ def _refresh_rejected_decision(
         if isinstance(frame.get("required_next"), dict):
             response["required_next"] = dict(frame["required_next"])
         if frame.get("ok") and isinstance(frame.get("choices"), list):
+            response["error"]["message"] = "The submitted handles were rejected. A fresh guarded frame is already supplied at recovery.frame; select from its choices and copy its decision_id and the selected choice_id exactly."
             response["required_next"].update({
                 "select_choice_from": "recovery.frame.choices",
                 "instruction": "The submitted IDs are unusable. Select one current choice from recovery.frame and copy both replacement IDs exactly.",

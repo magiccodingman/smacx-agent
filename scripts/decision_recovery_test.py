@@ -132,3 +132,16 @@ second=attempt(next_frame['decision_id'],next_frame['choices'][0]['choice_id'])
 assert second['ok'] and len(writes)==2
 assert m.DECISION_CACHE[first['decision_id']]['consumed']
 print('post-action chain passed: observed -> cached -> returned -> guarded next selection, exactly two selected mutations')
+
+# One allowed long generation must not invalidate an otherwise guarded handle.
+from smacx_provider_watchdog import PROVIDER_GENERATION_SECONDS
+clear();phase='turn'
+frame=m.smac_decision();d=frame['decision_id'];c=frame['choices'][0]['choice_id']
+m.DECISION_CACHE[d]['created_monotonic']=time.monotonic()-PROVIDER_GENERATION_SECONDS-1
+result=attempt(d,c)
+assert result['ok'] and len(writes)==1
+assert m.DECISION_CACHE[d]['consumed']
+assert attempt(d,c)['error']['code']=='consumed_decision'
+assert len(writes)==1
+assert m.DECISION_TTL_SECONDS==PROVIDER_GENERATION_SECONDS+60
+print('long generation handle passed: bounded generation survives, native dispatch once, consumed reuse rejected')

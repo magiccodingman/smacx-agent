@@ -2,6 +2,9 @@
 from math import isfinite
 from typing import Mapping
 
+PROVIDER_GENERATION_SECONDS = 1200
+DECISION_HANDLE_SECONDS = PROVIDER_GENERATION_SECONDS + 60
+
 
 def provider_drain_window(*, run_id, now, progress_since, stall_seconds, request, previous=None,
                           progress_observed_after=None):
@@ -33,7 +36,7 @@ def provider_drain_window(*, run_id, now, progress_since, stall_seconds, request
     # 20 minutes from submission is absolute; keepalives cannot buy time.
     content = request.get('last_content_unix')
     if type(content) in (int, float) and isfinite(content) and started <= content <= observed:
-        prior = {**prior, 'hard_deadline': max(deadline + 180, started + 1200),
+        prior = {**prior, 'hard_deadline': max(deadline + 180, started + PROVIDER_GENERATION_SECONDS),
                  'last_content_unix': content}
         if phase == 'streaming' and now - content >= 120:
             return False, {**prior, 'stop_reason': 'provider_stream_silent'}
