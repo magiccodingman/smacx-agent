@@ -145,3 +145,15 @@ assert attempt(d,c)['error']['code']=='consumed_decision'
 assert len(writes)==1
 assert m.DECISION_TTL_SECONDS==PROVIDER_GENERATION_SECONDS+60
 print('long generation handle passed: bounded generation survives, native dispatch once, consumed reuse rejected')
+
+# Accepted is not completed, but a fresh observation avoids a redundant read.
+clear(); m._call=original_bridge
+first=m.smac_decision()
+selected=attempt(first['decision_id'],first['choices'][0]['choice_id'])
+assert selected['execution_status']=='accepted' and not selected.get('completed')
+assert selected['post_action_decision']['frame']['ok'] and len(writes)==1
+for extra in ({'queued':True}, {'sleep':{'reason':'foreign turn'}},
+              {'turn_handoff_required':True}, {'required_next':{'stop_after':True}}):
+    receipt={'ok':True,'execution_status':'accepted',**extra}
+    assert 'post_action_decision' not in m._attach_post_action_decision(receipt,key)
+print('accepted observation retains uncertainty; queued, sleep and handoff do not collect')

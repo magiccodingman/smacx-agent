@@ -536,7 +536,7 @@ def _bounded_attention(lease: Mapping[str, Any], *, token_budget: int) -> dict[s
               ("attention_lease_id", "through_cursor", "status", "reused")
               if lease.get(key) is not None}
     result["items"] = []
-    if lease.get("acknowledgement"):
+    if lease.get("items") and lease.get("acknowledgement"):
         result["acknowledgement"] = lease["acknowledgement"]
     if lease.get("status") == "responded":
         result["status_meaning"] = "A model response occurred; this does not acknowledge these items."

@@ -120,6 +120,32 @@ def main() -> int:
             # Execution is an outcome receipt, not an older state frame.
             # A later decision must not erase evidence that it happened.
             raise AssertionError("state-frame compaction or execution receipt retention is incorrect")
+        # Recovery menus obey the same one-use lifetime as ordinary frames.
+        recovery_history = [{"role": "user", "content": "current episode"}]
+        for identifier in ("recovery-a", "recovery-b"):
+            recovery_history.extend([
+                {"role": "assistant", "content": "", "tool_calls": [dispatched_call(identifier, "smac_execute_choice")]},
+                {"role": "tool", "tool_call_id": identifier, "content": json.dumps({
+                    "ok": False, "error": {"code": "unknown_decision"},
+                    "recovery": {"attempted_action_replayed": False, "frame": {
+                        "decision_id": "recovered", "choices": [{"choice_id": "retire-me"}]}}})}])
+        recovery_history.extend([
+            {"role": "assistant", "content": "Keep the uncertain river plan.", "tool_calls": [
+                dispatched_call("consume", "smac_execute_choice", {"decision_id": "recovered", "choice_id": "retire-me"})]},
+            {"role": "tool", "tool_call_id": "consume", "content": json.dumps({
+                "ok": True, "decision_consumed": True, "effect_verified": False})}])
+        frozen = copy.deepcopy(recovery_history)
+        recovery_wire = AIAgent._sanitize_api_messages(recovery_history)
+        for row in recovery_wire:
+            if row.get("tool_call_id") in {"recovery-a", "recovery-b"}:
+                result = json.loads(row["content"])
+                assert result["error"]["code"] == "unknown_decision"
+                assert result["recovery"]["attempted_action_replayed"] is False
+                assert result["recovery"]["frame"]["decision_consumed"]
+                assert "retire-me" not in row["content"]
+        assert recovery_history == frozen
+        assert any(row.get("content") == "Keep the uncertain river plan." for row in recovery_wire)
+
         # A realistic multi-turn transcript must stay bounded on the provider
         # wire even though Hermes preserves the full durable history in SQLite.
         long_history = [{"role": "user", "content": "opening episode"}]

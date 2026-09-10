@@ -680,7 +680,7 @@ def _install() -> None:
         historical_tool_call_ids: set[str] = set()
         pending_tool_ids: set[str] = set()
         state_rows: list[int] = []
-        decision_rows: dict[str, int] = {}
+        decision_rows: dict[str, list[tuple[int, str]]] = {}
         consumed_decision_ids: set[str] = set()
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict):
@@ -726,12 +726,13 @@ def _install() -> None:
                     state_rows.append(index)
                 result = _managed_tool_result(message.get("content"))
                 if name == "smac_execute_choice" and isinstance(result, dict):
-                    nested = (result.get("post_action_decision") or {}).get("frame")
-                    if isinstance(nested, dict) and isinstance(nested.get("decision_id"), str):
-                        decision_rows[nested["decision_id"]] = index
+                    for container in ("post_action_decision", "recovery"):
+                        nested = (result.get(container) or {}).get("frame")
+                        if isinstance(nested, dict) and isinstance(nested.get("decision_id"), str):
+                            decision_rows.setdefault(nested["decision_id"], []).append((index, container))
                 if name in {"smac_decision", "smac_choices"} and isinstance(result, dict) \
                         and isinstance(result.get("decision_id"), str):
-                    decision_rows[result["decision_id"]] = index
+                    decision_rows.setdefault(result["decision_id"], []).append((index, ""))
                 elif name == "smac_execute_choice" and isinstance(result, dict) \
                         and result.get("decision_consumed") is True:
                     arguments = _managed_tool_arguments(tool_calls_by_id.get(call_id)) or {}
@@ -746,25 +747,21 @@ def _install() -> None:
                     compacted_boundaries += 1
         superseded_consumed_rows: set[int] = set()
         for decision_id in consumed_decision_ids:
-            index = decision_rows.get(decision_id)
-            if index is None or str(sanitized[index].get("tool_call_id") or "") in pending_tool_ids:
-                continue
-            original_result = _managed_tool_result(sanitized[index].get("content"))
-            if isinstance(original_result, dict) and original_result.get("post_action_decision"):
-                original_result["post_action_decision"] = {
-                    "schema": "smacx.post-action-decision.v1",
-                    "frame": {"superseded_runtime_state": True, "decision_consumed": True}}
-                sanitized[index]["content"] = json.dumps(original_result, separators=(",", ":"))
+            for index, container in decision_rows.get(decision_id, ()):
+                if str(sanitized[index].get("tool_call_id") or "") in pending_tool_ids:
+                    continue
+                original_result = _managed_tool_result(sanitized[index].get("content"))
+                retired = {"superseded_runtime_state": True, "decision_consumed": True,
+                    "instruction": "Consumed decision; use the newest execution or recovery frame."}
+                if container and isinstance(original_result, dict):
+                    # Keep the error, effect receipt and recovery provenance.
+                    # Only its obsolete executable menu is retired.
+                    original_result[container]["frame"] = retired
+                    sanitized[index]["content"] = json.dumps(original_result, separators=(",", ":"))
+                else:
+                    sanitized[index]["content"] = json.dumps({"ok": True, **retired}, separators=(",", ":"))
+                    superseded_consumed_rows.add(index)
                 compacted_frames += 1
-                continue
-            sanitized[index]["content"] = json.dumps({
-                "ok": True,
-                "superseded_runtime_state": True,
-                "decision_consumed": True,
-                "instruction": "This decision was consumed by a later execution receipt. Never reuse its decision_id or choice_id; use the newest execution or recovery result and current native focus.",
-            }, separators=(",", ":"))
-            superseded_consumed_rows.add(index)
-            compacted_frames += 1
         for index in state_rows:
             if index == state_rows[-1] and index >= last_user:
                 continue

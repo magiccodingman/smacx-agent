@@ -3755,10 +3755,10 @@ def _refresh_rejected_decision(
 
 
 def _attach_post_action_decision(response: dict, key: tuple[str, str]) -> dict:
-    """Observe once after settled success; collection failure never reverses execution."""
+    """Observe once after nonqueued success; observation does not certify completion."""
     if os.environ.get("SMACX_POST_ACTION_DECISION", "1") == "0" or not MANAGED_ATTACHED:
         return response
-    if not response.get("ok") or response.get("execution_status") not in {"completed", "order_assigned"}:
+    if not response.get("ok") or response.get("execution_status") not in {"completed", "order_assigned", "accepted"}:
         return response
     if response.get("turn_handoff_required") or response.get("sleep") or response.get("queued") \
             or (response.get("required_next") or {}).get("stop_after"):
