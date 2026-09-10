@@ -1406,3 +1406,17 @@ no new timer will be scheduled.
 Installed-image checkpoint: seven-family managed read-edit-write, rejected-write
 status feedback, fresh-guard discovery and the 15-tool schema budget pass using
 packaged source. Deployment and paired native recovery still pending.
+
+Controlled real-Hermes checkpoint: installed harness provider capture passes for
+initial/resumed direct schemas, preserved conversation and generation settings.
+Shared-stack deployment and live paired recovery are the remaining gates.
+
+Deployment/native recovery checkpoint: running control source hashes match the
+repair commit; both MCP sidecars use the new image. Paired turn-8 native/AI
+checkpoint is restore-tested for two seats with no incidents. Automatic sovereign
+reconnection remains the last operational gate; live correction remains unproven.
+
+Final operational acceptance: AI - 7 resumed at turn 8, `observed_active`, two
+verified live sovereign processes, healthy worker/MCP pairs, no incidents or run
+verification errors. See [deployment receipt](benchmarks/memory-contract-deployment.json).
+No timer created. Live model correction and speed remain unclaimed.

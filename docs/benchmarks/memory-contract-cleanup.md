@@ -58,10 +58,26 @@ on-demand edit operation, not an automatically injected context section.
 
 Installed control-image checks passed with only test scripts mounted: seven-family
 contract, status feedback, guard discovery and schema budget. Source files were
-read from the rebuilt image. Final provider capture and paired campaign resume
-remain pending. Controlled tests
+read from the rebuilt image. Controlled real-Hermes capture also passed: initial/resumed tool schemas,
+provider request capture, resume preservation and generation settings. Paired
+turn-8 restore passed for both seats; both sovereign processes are now verified active, with healthy workers/MCP and no incidents. Controlled tests
 prove interface/adapter behavior, not that the sovereign will choose the right
 revision or improve strategy. The prior repair-bonus interpretation problem remains
 open. No speed improvement is claimed for this correctness cleanup.
 
 All existing check-in automations remain paused; no new timer is authorized.
+
+Deployment uses control/MCP image `smacx-agent-control:memory-contract`
+(`07748bf272a0cfb80a136d57447e3c8b83989400cc2d3cda08f68040536ed851`)
+and harness image `smacx-agent-harness:memory-contract`
+(`a89d8b7b2f874e1566ec336b1db7037413c965a943777c73304733e94e185f29`).
+Running control source hashes match the committed contract, controller and MCP.
+Compose comparison verified unchanged unrelated services, provider/Graphiti
+settings and storage. The readiness stack was not modified. Both restarted MCP
+sidecars use the new control image. Checkpoint
+`checkpoint-aa1a4ee01aee49cb94a8e85f4aa0a8bb` is `restore_tested` for two seats.
+
+Final health: `observed_active`, two active runs/two live sovereign processes,
+turn 8, no incidents or run-verification errors. Sanitized operational receipt:
+[`memory-contract-deployment.json`](memory-contract-deployment.json). Timers remain
+paused. The owner continues live behavioral evaluation.
