@@ -1382,3 +1382,8 @@ bindings and journal safety. Provider-facing repair objects now carry repair-onl
 scope across restored/inspected/anchor paths without changing epistemic state;
 logistics and runtime defense boundaries separate repair from combat. Live model
 interpretation remains open. [Evidence](benchmarks/semantic-clarity-followup.md).
+
+Semantic clarity deployment/recovery checkpoint: turn-5 paired restore tested
+for both seats, no remaining incidents, both sovereigns active. Two actual resumed
+provider requests carry repair-only scope and explicit plan-reference guidance.
+Live decision quality remains pending the scheduled follow-up; speed is not required.
