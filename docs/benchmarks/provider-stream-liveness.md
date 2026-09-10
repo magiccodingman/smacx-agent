@@ -30,3 +30,18 @@ Installed control-image tests pass. The real Hermes provider-capture test passes
 with rebuilt images, including actual streaming, terminal metadata, tool deltas,
 authority heartbeat and clean authority-loss exit. The direct schema/prompt,
 resume and semantic-GC contracts remain intact. Live deployment follows this gate.
+
+## Deployment acceptance
+
+Deployed rebuilt control/MCP and Hermes images tagged `stream-liveness`. AI - 7
+restored at turn 12 and AI - 8 at turn 4, each with two active sovereign runs,
+no incidents or verification errors, and observed-active health. Foreign-turn
+sleep can correctly reduce the count of live processes without stopping a run.
+Four finite follow-up checks are scheduled for September 10 at 01:49, 03:49,
+05:49 and 07:49 Eastern; they may repair and redeploy within the authorized scope.
+Long-generation continuation remains subject to those live checks; controlled
+clock tests prove the new limit behavior, not strategic quality.
+
+A live AI - 7 request reports `phase=streaming` with a content watermark advancing
+42 seconds after submission. The new liveness evidence reaches the running
+runtime; survival beyond the former watchdog boundary is not yet claimed.
