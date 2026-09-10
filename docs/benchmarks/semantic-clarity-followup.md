@@ -52,3 +52,25 @@ Actual resumed requests `0f3fe1abba544481bde33f4d619b1098` and
 schema guidance and low reasoning. This proves provider delivery after recovery;
 correct model interpretation still awaits the single thirty-minute check-in.
 Local capture: `/tmp/ai7-semantic-resumed.zip`. No new match was needed.
+
+## User-requested early review (2026-09-10 02:04 UTC)
+
+Timer cancelled; capture `/tmp/ai7-now.zip`. Turn 7, healthy worker/MCP pairs,
+no incidents. One sovereign is waiting between turns. All nine post-recovery
+attention acknowledgements succeeded. Farm at location-2151 is now present in
+current observed tile features (world revision 12), not merely an accepted order.
+Spartans have a Colony Pod at 29/33 minerals in captured context. Peacekeepers
+retained an Alien Artifact retrieval plan across the turn boundary.
+
+Repair interpretation is **not accepted**: request
+`ab3af81846d64fdea00429ff07d8ec3d` delivered the repair-only scope, but the following
+reasoning still described `base_facility_bonus 10` as defense. Retained prior
+reasoning/prose may contribute; causality is unproven. Clearer displayed repair
+field names may help, but do not claim the current label solved interpretation.
+
+The new indexed reference error was not exercised in this sample. A separate
+Spartan plan-completion attempt omitted title, then objective on retry. Both
+writes were rejected, leaving the old plan unresolved; an unrelated next-turn
+plan succeeded. Full-record update semantics and all missing required fields
+should be surfaced together rather than producing serial generic field errors.
+No code changes or gameplay stop were performed during this review.

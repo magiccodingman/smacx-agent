@@ -1387,3 +1387,9 @@ Semantic clarity deployment/recovery checkpoint: turn-5 paired restore tested
 for both seats, no remaining incidents, both sovereigns active. Two actual resumed
 provider requests carry repair-only scope and explicit plan-reference guidance.
 Live decision quality remains pending the scheduled follow-up; speed is not required.
+
+Early follow-up: repair label reaches the provider but the model still misuses
+the repair bonus as defense; interpretation acceptance remains open. New indexed
+reference guidance is not exercised live yet. Separate partial plan-update errors
+leave an old plan unresolved. Farm completion is observed; recovery remains active
+without incidents. Timer cancelled at user request; see semantic-clarity evidence.
