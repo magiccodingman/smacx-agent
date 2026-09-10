@@ -1462,3 +1462,8 @@ is 1,481 conservative tokens. Existing managed action, opaque execution, recover
 pipeline, runtime context, geography and attention suites passed. Installed control module
 hash matches source. This does not establish exact border effects or autonomous strategic
 quality; those remain explicitly unclaimed. See [acceptance JSON](benchmarks/settlement-assistance.json).
+
+Settlement deployment: public-stack control health and configured worker/MCP/harness images
+verified, with installed module/manifest hashes matching source. Both prior campaigns remain
+completed. Native tested center effects and recovery/query contracts are accepted at the
+explicit scope recorded above; strategic quality across new games is not yet measured.

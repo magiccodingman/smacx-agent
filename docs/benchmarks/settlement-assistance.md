@@ -69,3 +69,11 @@ module SHA-256 matches the checkout. Full native source in the bridge build imag
 also matches the checkout. No automatic action was added to settlement search.
 
 [Sanitized acceptance summary](settlement-assistance.json).
+
+Deployment verified: public-stack control API healthy on
+`smacx-agent-control:settlement-assistance`; worker/MCP/harness settings point to
+settlement-assistance images. Control and harness installed settlement, MCP and
+engine-compatibility file hashes match source. AI - 7 and AI - 8 - Instruct both
+remain `completed`. No campaign or timer restarted. Isolated native test workers,
+volumes and their two prepared images were removed; other installation resources
+were not changed.
