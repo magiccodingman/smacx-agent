@@ -49,5 +49,21 @@ against a controlled slow provider confirms private heartbeats during inference,
 receipt exclusion from every captured provider request, and unchanged generation,
 resume, tool-boundary and semantic-GC contracts. A forced authority rejection
 exits the actual CLI with status 0 before any further provider request.
-Live paired recovery and actual lease-extension observations remain pending.
-AI - 7 is parked; AI - 8 retains its verified turn-1 checkpoint. No timer is scheduled.
+## Deployment and paired recovery
+
+Deployed `smacx-agent-control:episode-lease` and
+`smacx-agent-harness:episode-lease`; installed source hashes match the committed
+implementation. Only the intended runtime image selections changed.
+AI - 7 resumed its turn-11 checkpoint. AI - 8 resumed its original turn-1 checkpoint
+through incident recovery; both Graphiti memory projections completed before AI
+admission. Both campaigns have two active sovereign runs, healthy worker/MCP pairs,
+and no incidents or verification errors. Restored AI - 7 uses low reasoning;
+AI - 8 uses none. No replacement campaign or database reset was needed.
+
+Two live AI - 7 episodes extended expiry by approximately 60 seconds without
+changing acquisition time. The controlled-clock acceptance, rather than this short
+live sample, proves operation beyond the original 900-second deadline. This is not
+a claim of full-game reliability or strategic quality.
+
+Sanitized evidence: [deployment receipt](sovereign-lease-deployment.json).
+No timer was created.
