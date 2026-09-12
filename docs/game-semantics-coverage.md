@@ -1501,3 +1501,5 @@ September 12 deployment gate: both campaign recovery operations completed at 14:
 | --- | --- |
 | Empty rejected-choice recovery | Live consumed automatic popup choice → contradictory select/wait directive identified → nonempty actionable frames alone offer replacement selection → decision-cache wait/recovery contracts pass. |
 | Foreign-wait memory repetition | Live duplicate writes with receipts present in provider history → fresh same-session native wait check → bounded existing per-seat suspension instead of campaign quarantine → facade own/unknown/mismatched-state circuits and supervisor finite suspension/wake tests pass. Live adherence still pending. |
+
+First-check follow-up deployment: both campaigns resumed by 14:56 UTC after verified restoration (AI9 turn 21, AI10 turn 12). MCP source hash matches the tested repair. Sustained progression remains pending; no healthy-check credit is awarded for this repair cycle.
