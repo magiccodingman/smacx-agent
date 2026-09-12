@@ -64,3 +64,17 @@ After movement recovery, AI10's Spartan client restored into an information-only
 Runtime context now scopes `current_faction_id` to ordinary turn actions and labels every `phase=interaction` focus as a client-local blocker. The fixed doctrine carries the same rule. A resumed episode whose authoritative progress remains in interaction receives a direct correction to call `smac_decision`; only a fresh `phase=wait` permits `WAITING`. This resolves a family of multiplayer local-dialog ambiguities without assigning strategic choices to the runtime or automatically dismissing unreviewed dialogs.
 
 Runtime-context, prompt-integrity, continuation, semantic-progress, wait-interaction and reviewed-notification contracts pass. Exact sanitized evidence is recorded in [turn35-local-modal-ownership.json](turn35-local-modal-ownership.json). Live dismissal, paired recovery, turn advancement and the four-hour stability window remain pending deployment.
+
+Deployment acceptance at turn 35: both AI9 and AI10 restored from their paired,
+verified checkpoints after explicit doctrine recompilation. AI10's Spartan client
+started on the same client-local `INTRO` blocker that caused the incident while
+Peacekeepers still owned ordinary turn actions. The reviewed notification drain
+captured and dismissed the introduction; the sovereign's first fresh
+`smac_decision` then returned the correct `phase=wait` boundary. In parallel,
+AI10's Peacekeeper client moved from its own local introduction into
+`phase=turn`. AI9 independently captured and dismissed a Spartan introduction,
+then advanced that client to its ordinary turn. Both campaigns subsequently
+reported `observed_active`, healthy worker and MCP pairs, two active sovereign
+runs and no active incidents. This closes live recovery and local-modal effect
+verification for this checkpoint. Four consecutive hourly healthy samples with
+real liveness or advancement remain required for sustained-stability acceptance.
