@@ -4157,6 +4157,10 @@ bool reviewed_information_popup(const std::string& label) {
         // the shared timer has already crossed its threshold. Acknowledging it
         // only dismisses presentation on this client.
         || label == "TIMEWARNING"
+        // mod_action_destroy has already removed the improvement/forest.
+        // Script.txt supplies text only; popp ignores the dismissal result.
+        // Native continuation owns order completion, not this acknowledgement.
+        || label == "SPORESLAUNCHED" || label == "SPOREFOREST"
         // The base-support routine selected a unit for forced disbanding.
         // It performs the removal after this notice returns. Acknowledgement
         // offers no alternative, but is not itself proof of completed removal.
