@@ -174,12 +174,16 @@ def main() -> int:
         assert compact["identity"]["action_revision"] == "action-9"
         assert compact["focus"]["focus_id"] == rich["focus"]["focus_id"]
         assert compact["focus"]["mandatory"] is True
+        assert compact["focus"]["scope"] == "client_local_blocker"
+        assert "even when current_faction_id names another faction" in compact["focus"]["ownership"]
         assert compact["native_protocol"] == {
             "source": "current_native_snapshot", "phase": "interaction",
             "faction_id": None, "current_faction_id": None,
+            "current_faction_scope": "ordinary_turn_actions",
+            "interaction_scope": "client_local_blocker",
             "required_action": "respond", "ready_unit_count": 0,
             "end_turn_blocked": None, "action_revision": "action-9",
-            "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
+            "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. current_faction_id owns ordinary turn actions, not a client-local modal: phase=interaction must be resolved by this sovereign even when the IDs differ. Only phase=wait permits a WAITING yield. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
         }
         closed = assembler.build(episode_id="episode-terminal", episode_mode="gameplay",
             context_length=65536, episode_boundary={"turn_handoff_required": {
@@ -196,6 +200,7 @@ def main() -> int:
             episode_mode="gameplay", context_length=65536)
         assert own_turn["focus"]["kind"] == "turn"
         assert own_turn["native_protocol"]["faction_id"] == own_turn["native_protocol"]["current_faction_id"] == 2
+        assert own_turn["native_protocol"]["interaction_scope"] is None
         assert own_turn["native_protocol"]["ready_unit_count"] == 0
         assert own_turn["native_protocol"]["required_action"] == "manage_strategy_or_end_turn"
         assert "WAITING text does not end" in own_turn["native_protocol"]["meaning"]

@@ -307,8 +307,10 @@ def _focus(snapshot: Mapping[str, Any]) -> dict[str, Any]:
             "focus_id": "focus-interaction-" + hashlib.sha256(
                 material.encode()).hexdigest()[:24],
             "kind": "blocking_interaction", "mandatory": True,
+            "scope": "client_local_blocker",
             "label": str(interaction.get("popup_label") or "interaction"),
             "required_action": protocol.get("required_action"),
+            "ownership": "This modal belongs to this managed client. Resolve it even when current_faction_id names another faction; that field owns ordinary turn actions, not this modal.",
             "action_revision": snapshot.get("revision"),
         }
     if phase == "wait":
@@ -718,12 +720,17 @@ class RuntimeContextAssembler:
                 "phase": protocol.get("phase"),
                 "faction_id": (snapshot.get("faction") or {}).get("id"),
                 "current_faction_id": ((snapshot.get("interaction") or {}).get("engine_state") or {}).get("current_faction_id"),
+                "current_faction_scope": "ordinary_turn_actions",
+                "interaction_scope": (
+                    "client_local_blocker" if protocol.get("phase") == "interaction"
+                    else None
+                ),
                 "required_action": protocol.get("required_action"),
                 "ready_unit_count": len(snapshot.get("ready_unit_refs", ()))
                     if isinstance(snapshot.get("ready_unit_refs"), list) else 0,
                 "end_turn_blocked": protocol.get("end_turn_blocked"),
                 "action_revision": snapshot.get("revision"),
-                "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
+                "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. current_faction_id owns ordinary turn actions, not a client-local modal: phase=interaction must be resolved by this sovereign even when the IDs differ. Only phase=wait permits a WAITING yield. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
             },
             "force_summary": _force_summary(projection),
             "operational_review": operational_context({o["object_ref"]: o for o in projection.get("objects", ())}, limit=4),

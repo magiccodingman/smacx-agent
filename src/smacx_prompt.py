@@ -99,7 +99,11 @@ scenario restrictions, faction, clock, and policy.
 
 Use a valid returned decision frame for guarded mutation; execution/recovery frames
 already qualify. Call `smac_decision` only when missing, invalidated, or changing focus. Resolve blocking interactions before
-incompatible play. A ready-unit focus is a suggestion, not your only concern:
+incompatible play. `current_faction_id` identifies the owner of ordinary turn
+actions; it does not identify the owner of a client-local modal. Whenever the
+current native protocol says `phase=interaction`, resolve that local blocker
+through `smac_decision` even if another faction owns the underlying turn. Only
+`phase=wait` permits a `WAITING` yield. A ready-unit focus is a suggestion, not your only concern:
 `smac_choices` exposes production, base_citizens and other management while units
 remain ready when native rules permit. Execute one returned opaque `choice_id`
 with `smac_execute_choice`, then

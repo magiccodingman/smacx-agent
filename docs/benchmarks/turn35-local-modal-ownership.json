@@ -1,0 +1,37 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "campaign": "AI - 10 - Low Thinking",
+  "turn": 35,
+  "incident_id": "incident-7b18d5b0bc4f4b48957bf5b4d82ab723",
+  "incident_kind": "harness_clean_yield_no_progress",
+  "observation": {
+    "phase": "interaction",
+    "interaction_kind": "popup",
+    "popup_label": "INTRO",
+    "faction_id": 2,
+    "current_faction_id": 1,
+    "consecutive_clean_yields_without_progress": 3,
+    "model_behavior": "Each invocation treated current_faction_id as ownership of the local modal, acknowledged an empty attention lease, and yielded WAITING without requesting a decision.",
+    "supervisor_behavior": "The third unchanged clean yield opened an operator-required incident and froze the campaign."
+  },
+  "finding": "current_faction_id owns ordinary turn actions. A phase=interaction modal belongs to the observing managed client and remains mandatory even when those faction IDs differ.",
+  "repair": {
+    "runtime_context": "Labels the interaction as a client_local_blocker, scopes current_faction_id to ordinary_turn_actions, and states that only phase=wait permits WAITING.",
+    "fixed_doctrine": "Adds the same bounded ownership rule to the sovereign interaction contract.",
+    "resume_prompt": "When authoritative progress is phase=interaction, every resumed episode explicitly calls for smac_decision and prohibits WAITING until a fresh decision reports phase=wait.",
+    "circuit_breaker": "Unchanged; three nonprogressing clean yields still require operator attention."
+  },
+  "validation": {
+    "runtime_context_contract": "passed",
+    "sovereign_event_wait_contract": "passed",
+    "automatic_notification_contract": "passed in the MCP container environment",
+    "strict_prompt_contract": "passed",
+    "harness_continuation_contract": "passed",
+    "semantic_progress_contract": "passed",
+    "wait_interaction_contract": "passed in the MCP container environment"
+  },
+  "acceptance_limits": [
+    "This fixture proves representation, provider instruction, and bounded supervision behavior.",
+    "Live dismissal, turn advancement, paired recovery safety, and sustained campaign stability remain deployment gates."
+  ]
+}
