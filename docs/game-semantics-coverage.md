@@ -1494,3 +1494,5 @@ See [development and spectator acceptance](benchmarks/development-rejection-and-
 See [September 12 supervision evidence](benchmarks/sep12-campaign-supervision.md).
 
 | Clean-yield incident retry after update | Live portal request exposed backend kind mismatch → exact clean-yield kind admitted → incident latch/idempotency/unrelated-kind tests and verified recovery ordering pass. AI9 live restoration remains the acceptance gate. |
+
+September 12 deployment gate: both campaign recovery operations completed at 14:30 UTC, including AI9's formerly rejected clean-yield retry. Current control source hashes match tested code. Sustained turn progression and model adherence remain pending the scheduled 15-minute checks; successful recovery alone is not full acceptance.

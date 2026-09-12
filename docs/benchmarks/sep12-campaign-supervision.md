@@ -12,3 +12,9 @@ Local raw diagnostic packets remain in ignored runtime/astra/ai9-sep12.json and 
 ## Recovery-route follow-up
 
 Live recovery found a third defect: the portal accepts clean-yield incidents for retry-after-update, while the worker manager rejected them as not a capability incident. The exact clean-yield kind is now admitted through that same verified-image/checkpoint restore path. Tests prove failed restores retain the incident, successful restores clear it only afterward, repeat requests are idempotent, and unrelated incident kinds/gaps remain protected. Recovery observation-order tests pass for identity failures, digest failures, staged slots and LAN/single-player paths. AI10 recovery proceeded through the existing capability route; AI9 requires this follow-up deployment.
+
+## Deployment and recovery read-back
+
+On September 12 at 14:30 UTC, both portal recovery operations completed and both campaigns returned to running. AI9 restored turn 21 with two live sovereign processes and healthy worker/MCP state; AI10 restored the paired turn-9 checkpoint and restarted its two sovereigns (foreign-turn sleep can subsequently remove a process normally). Deployed control source hashes match the tested supervisor, runtime context and recovery manager. Only the public smacx-agent control/supervisor services and campaign recovery resources were replaced; the readiness stack was untouched.
+
+A thread heartbeat now checks every 15 minutes. Sustained stability is not yet claimed: acceptance requires three consecutive healthy checks with real gameplay advancement across both campaigns and no unresolved errors. Model adherence to own-turn guidance remains a live gate. Baselines/check results are kept in ignored runtime/astra/sep12-stability.json.
