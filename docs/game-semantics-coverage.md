@@ -1503,3 +1503,5 @@ September 12 deployment gate: both campaign recovery operations completed at 14:
 | Foreign-wait memory repetition | Live duplicate writes with receipts present in provider history → fresh same-session native wait check → bounded existing per-seat suspension instead of campaign quarantine → facade own/unknown/mismatched-state circuits and supervisor finite suspension/wake tests pass. Live adherence still pending. |
 
 First-check follow-up deployment: both campaigns resumed by 14:56 UTC after verified restoration (AI9 turn 21, AI10 turn 12). MCP source hash matches the tested repair. Sustained progression remains pending; no healthy-check credit is awarded for this repair cycle.
+
+15:13 UTC live gate: both campaigns advanced (AI9 21→22; AI10 12→13), no active incidents, native-verified peer sleep, and bounded streaming admission observed. First healthy check of three; sustained acceptance remains open.
