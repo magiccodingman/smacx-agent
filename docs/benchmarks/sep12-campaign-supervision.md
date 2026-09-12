@@ -78,3 +78,10 @@ reported `observed_active`, healthy worker and MCP pairs, two active sovereign
 runs and no active incidents. This closes live recovery and local-modal effect
 verification for this checkpoint. Four consecutive hourly healthy samples with
 real liveness or advancement remain required for sustained-stability acceptance.
+
+First hourly stability sample at 23:53 UTC: AI9 advanced 27→35 and AI10
+advanced 35→38. Both report `observed_active`, no health reasons or active
+incidents, and two healthy worker/MCP pairs. Each match has one live sovereign
+process while its peer is legitimately suspended outside the current native
+turn. Available root storage is 151 GB. Healthy samples: 1 of 4; this is one
+bounded liveness sample, not sustained-stability acceptance.
