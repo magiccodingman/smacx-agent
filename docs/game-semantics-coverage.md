@@ -1492,3 +1492,5 @@ See [development and spectator acceptance](benchmarks/development-rejection-and-
 | Zero-ready-unit turn ownership | Observed instruct misinterpretation despite legal End turn choice → explicit own/current faction IDs and current-protocol guidance → runtime assembly test with own turn and zero ready units. Sovereign keeps the choice; improved live compliance remains unproven. |
 
 See [September 12 supervision evidence](benchmarks/sep12-campaign-supervision.md).
+
+| Clean-yield incident retry after update | Live portal request exposed backend kind mismatch → exact clean-yield kind admitted → incident latch/idempotency/unrelated-kind tests and verified recovery ordering pass. AI9 live restoration remains the acceptance gate. |

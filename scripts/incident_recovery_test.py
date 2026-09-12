@@ -176,6 +176,31 @@ def main() -> int:
         if failed["incident_id"] not in still_active:
             raise AssertionError("failed recovery cleared the capability latch")
 
+        clean = control.record_supervision_incident(instance["instance_id"],
+            "harness_clean_yield_no_progress", "operator_required", {"turn": 21})
+        try:
+            manager.retry_match_after_update(scope.match_id, clean["incident_id"])
+        except WorkerManagerError as exception:
+            assert str(exception) == "contained_recovery_failure"
+        else:
+            raise AssertionError("clean-yield restore failure accepted")
+        assert control.get_supervision_incident(clean["incident_id"])["status"] == "operator_required"
+        def recover_clean(match_id, *, refresh_runtime=False):
+            assert refresh_runtime is True
+            assert control.get_supervision_incident(clean["incident_id"])["status"] == "operator_required"
+            control.update_match_lifecycle(match_id, "running")
+            return {"ok": True}
+        manager.recover_match = recover_clean
+        assert manager.retry_match_after_update(scope.match_id, clean["incident_id"])["operator_attention_cleared"]
+        assert manager.retry_match_after_update(scope.match_id, clean["incident_id"])["already_recovered"]
+        assert control.get_supervision_incident(other_gap["incident_id"])["status"] == "operator_required"
+        try:
+            manager.retry_match_after_update(scope.match_id, unrelated["incident_id"])
+        except WorkerManagerError as exception:
+            assert str(exception) == "capability_incident_required"
+        else:
+            raise AssertionError("unrelated incident accepted")
+
         # A bridge outage with a live container must freeze once and remain
         # latched on the next supervision pass, including sidecar restarts.
         manager.control_data_volume = None

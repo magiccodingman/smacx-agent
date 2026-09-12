@@ -8,3 +8,7 @@ Preserved operator packets identify two different failures after successful reco
 Validation: production watchdog regression simulates telemetry advancing during the read and proves the request is admitted without resetting gameplay progress. Existing hard-deadline, request replacement, silence, failure, clean-yield, foreign-wait and semantic-progress contracts pass. Runtime assembly tests preserve authoritative own-turn IDs with zero ready units and existing tier/attention/continuity budgets. Live recovery and sustained progression are separate acceptance gates, to be recorded after deployment. This does not establish that the instruct model will always follow the corrected guidance.
 
 Local raw diagnostic packets remain in ignored runtime/astra/ai9-sep12.json and ai10-sep12.json; private transcripts are not committed.
+
+## Recovery-route follow-up
+
+Live recovery found a third defect: the portal accepts clean-yield incidents for retry-after-update, while the worker manager rejected them as not a capability incident. The exact clean-yield kind is now admitted through that same verified-image/checkpoint restore path. Tests prove failed restores retain the incident, successful restores clear it only afterward, repeat requests are idempotent, and unrelated incident kinds/gaps remain protected. Recovery observation-order tests pass for identity failures, digest failures, staged slots and LAN/single-player paths. AI10 recovery proceeded through the existing capability route; AI9 requires this follow-up deployment.

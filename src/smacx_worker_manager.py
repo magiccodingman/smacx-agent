@@ -4402,7 +4402,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return result
 
     def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:
-        """Recover a capability-stopped match using current runtime images.
+        """Recover a capability or clean-yield stopped match using current images.
 
         The active incident remains latched throughout checkpoint restoration.
         It is marked recovered only after every managed native seat has
@@ -4419,7 +4419,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         incident = self.control.get_supervision_incident(incident_id)
         if incident["match_id"] != match_id:
             raise WorkerManagerError("incident_match_mismatch")
-        if not str(incident["incident_kind"]).startswith("capability_gap:"):
+        if (not str(incident["incident_kind"]).startswith("capability_gap:")
+                and incident["incident_kind"] != "harness_clean_yield_no_progress"):
             raise WorkerManagerError("capability_incident_required")
         if incident["status"] not in {"open", "operator_required"}:
             match = self.control.get_match(match_id)
