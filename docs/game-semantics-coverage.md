@@ -1505,3 +1505,5 @@ September 12 deployment gate: both campaign recovery operations completed at 14:
 First-check follow-up deployment: both campaigns resumed by 14:56 UTC after verified restoration (AI9 turn 21, AI10 turn 12). MCP source hash matches the tested repair. Sustained progression remains pending; no healthy-check credit is awarded for this repair cycle.
 
 15:13 UTC live gate: both campaigns advanced (AI9 21→22; AI10 12→13), no active incidents, native-verified peer sleep, and bounded streaming admission observed. First healthy check of three; sustained acceptance remains open.
+
+15:29 UTC check: AI10 advanced to turn 14; AI9's four invented decision IDs were safely rejected despite valid recovery frames in captured provider requests. The choice guard is verified effective, but model compliance/stability failed. Evidence retained; AI9 recovery queued without changing guard semantics. Healthy-check count reset.
