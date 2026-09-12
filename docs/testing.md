@@ -623,6 +623,21 @@ Damage overlap regression: `scripts/damage_event_overlap_test.py` replays the ob
 
 `memory_status_feedback_test.py` checks shared claim/commitment/goal/plan statuses, rejection without cognition mutation, and explicit active→abandoned plan revision through journal/runtime. `cognition_delivery_contract_test.py` separately checks actual Hermes serialization, next request, handoff, GC, restart and ambiguous persistence failure.
 
+`memory_contract_test.py` exercises all seven typed records through managed
+contract/editable-record reads and guarded full replacements. It verifies nested
+multi-error rejection without canonical mutation, strict numeric types, duplicate
+JSON rejection, explicit empty bindings, preserved fields, stale guards, journal
+reopening and uncertain/committed failure receipts. Use the MCP container Python;
+the cognition HTTP delivery test needs the Hermes Python environment with httpx.
+
+`sovereign_lease_lifecycle_test.py` exercises real lease SQL and the private runtime
+HTTP endpoint under controlled time. `sovereign_heartbeat_client_test.py` exercises
+the heartbeat transport, failure signal and clean exit without another model call.
+Run the former in the MCP environment and the latter with `harness` on PYTHONPATH
+(or the installed harness image). `hermes_provider_capture_test.py` also delays a
+controlled provider response to verify a real Hermes heartbeat during inference
+and exclusion of its private token from provider requests.
+
 `contact_gap_snapshot_identity_test.py` reproduces turn97 same-square out-and-back sentinel movement, with/without post-gap damage, staging/frozen-publication failures and restart. It also migrates an old private episode checkpoint once, retaining owned lifecycle identities and not asserting foreign destruction. Pair with cross-publication, owned-transient, rollback and native/MCP recovery acceptance.
 
 `native_truce_offer_test.py` compiles the production unconditional-truce label and popup-row guards with a controlled adapter. It rejects conditional/lookalike labels, altered row IDs/counts and failed submission. `managed_action_path_contract_test.py` checks both opaque responses and preserves the unverified relationship-effect qualifier. `native_truce_replay_test.py` requires an operator-supplied diagnostic ZIP (`SMACX_TRUCE_REPLAY_BUNDLE`, optionally `SMACX_TRUCE_REPLAY_ENTRY`) plus the isolated worker image/game-source environment used by the native suite. It loads the save into separate disposable workers for accept/reject and compares native Spartan relationship flags once the original offer closes. A same-turn follow-on popup is allowed: this proves the relationship effect, not completion of later negotiations or the entire turn. The production campaign is never resumed by this test. See [turn103 evidence](benchmarks/gameplay-truce-offer-turn103.json).
@@ -678,3 +693,7 @@ and `PYTHONPATH=src`. It exercises host and remote development, invalid/duplicat
 submissions, exact peer agreement and native save/reload. It starts no sovereign
 and does not operate on a production campaign. Test-only fixtures require both
 native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).
+
+Provider liveness: `PYTHONPATH=src:scripts python3 scripts/provider_drain_window_test.py`
+and `PYTHONPATH=src python3 scripts/provider_content_liveness_test.py` cover the
+bounded content watermark, silence, replacement, completion and hard deadline.

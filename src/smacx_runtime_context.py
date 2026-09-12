@@ -282,6 +282,7 @@ def _nearby_base_defense(world: WorldService, projection: Mapping[str, Any],
             "formal_relationship": "Treaty, Truce, Pact and Vendetta flags are reported separately when current.",
             "movement_zoc": "A foreign non-Pact movement constraint does not prove Vendetta or hostile intent.",
             "inferred_intent": "unknown unless separately supported by observed actions or communication.",
+            "defense_strength": "Garrison counts and response ETA do not establish combat odds. Global repair-rule bonuses are not combat defense modifiers.",
         },
     }
 
@@ -473,6 +474,16 @@ def _operation_context(operations: list[dict[str, Any]], *, token_budget: int) -
 
 def _attention_payload(item: Mapping[str, Any]) -> dict[str, Any]:
     payload = item.get("payload") if isinstance(item.get("payload"), Mapping) else {}
+    if item.get("attention_kind") == "game_notification":
+        # Original capture remains in the journal. Readiness belongs exclusively
+        # to current native_protocol, not to the historical popup snapshot.
+        historical = {key: value for key, value in (payload.get("state") or {}).items() if key != "protocol"}
+        if isinstance(historical.get("faction"), Mapping):
+            historical["faction"] = {key: value for key, value in historical["faction"].items() if key != "ready_units"}
+        return {"historical_state": historical, "popup_label": payload.get("popup_label"), "turn": payload.get("turn"),
+                "information": payload.get("information", []),
+                "native_dismissal": "already_dismissed",
+                "meaning": "Historical notification, pending cognitive review only. Use current native_protocol for readiness; this is not an active interaction."}
     removal_note = {}
     if item.get("attention_kind") in {"world_change", "world_changes"}:
         changes = [payload.get("delta", {})] if "delta" in payload else payload.get("deltas", ())
@@ -535,6 +546,10 @@ def _bounded_attention(lease: Mapping[str, Any], *, token_budget: int) -> dict[s
               ("attention_lease_id", "through_cursor", "status", "reused")
               if lease.get(key) is not None}
     result["items"] = []
+    if lease.get("items") and lease.get("acknowledgement"):
+        result["acknowledgement"] = lease["acknowledgement"]
+    if lease.get("status") == "responded":
+        result["status_meaning"] = "A model response occurred; this does not acknowledge these items."
     for raw in lease.get("items", ()):
         if not isinstance(raw, Mapping):
             continue
@@ -549,6 +564,8 @@ def _bounded_attention(lease: Mapping[str, Any], *, token_budget: int) -> dict[s
             result["remaining_count"] = len(lease.get("items", ())) - len(result["items"])
             break
         result["items"].append(item)
+    if not result["items"]:
+        result.pop("acknowledgement", None)
     return result
 
 
@@ -569,7 +586,7 @@ class RuntimeContextAssembler:
         self.intent_review = intent_review
 
     def build(self, *, episode_id: str, episode_mode: str,
-              context_length: int) -> dict[str, Any]:
+              context_length: int, episode_boundary: Mapping[str, Any] | None = None) -> dict[str, Any]:
         if episode_mode not in {"gameplay", "communication", "recovery"}:
             raise ValueError("invalid_episode_mode")
         snapshot = dict(self.snapshot())
@@ -586,6 +603,11 @@ class RuntimeContextAssembler:
             current_turn=turn,
         )
         focus = _focus(snapshot)
+        handoff = (episode_boundary or {}).get("turn_handoff_required")
+        handoff = dict(handoff) if isinstance(handoff, Mapping) and handoff.get("required") is True else None
+        if handoff:
+            focus = {"focus_id": "focus-episode-handoff", "kind": "turn_handoff",
+                     "mandatory": True, "required_action": handoff.get("instruction")}
         operation_refs = [
             str(ref) for operation in active["operations"]
             for ref in operation.get("referenced_world_objects", ())
@@ -679,7 +701,8 @@ class RuntimeContextAssembler:
         payload = {
             "schema": RUNTIME_CONTEXT_SCHEMA,
             "episode": {"episode_id": episode_id, "mode": episode_mode,
-                        "mutation_authority": episode_mode == "gameplay"},
+                        "mutation_authority": episode_mode == "gameplay" and not handoff},
+            **({"turn_handoff_required": handoff, "gameplay_mutations_blocked": True} if handoff else {}),
             "identity": {
                 **projection_identity.as_dict(),
                 "world_revision": int(projection["world_revision"]),
@@ -693,12 +716,14 @@ class RuntimeContextAssembler:
             "native_protocol": {
                 "source": "current_native_snapshot",
                 "phase": protocol.get("phase"),
+                "faction_id": (snapshot.get("faction") or {}).get("id"),
+                "current_faction_id": ((snapshot.get("interaction") or {}).get("engine_state") or {}).get("current_faction_id"),
                 "required_action": protocol.get("required_action"),
                 "ready_unit_count": len(snapshot.get("ready_unit_refs", ()))
                     if isinstance(snapshot.get("ready_unit_refs"), list) else 0,
                 "end_turn_blocked": protocol.get("end_turn_blocked"),
                 "action_revision": snapshot.get("revision"),
-                "meaning": "This current native protocol controls action readiness. Projected order counts summarize observed world state and do not prove that a unit remains ready.",
+                "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
             },
             "force_summary": _force_summary(projection),
             "operational_review": operational_context({o["object_ref"]: o for o in projection.get("objects", ())}, limit=4),
@@ -748,9 +773,13 @@ class RuntimeContextAssembler:
             "anchor_observation_cursor": anchor["anchor_observation_cursor"],
             "anchor": anchor["payload"],
             "net_deltas": anchor.get("net_deltas", []),
-            "delta_semantics": "appeared/changed describe known representation, not physical creation/growth. Feature and landmark counts are known extent; increases may be discovery. Use qualified temporal events for observed changes; no event is not proof of no physical change.",
+            "delta_semantics": "appeared/changed describe known representation, not creation/growth. Counts are known extent, not total size. Unknown neighbors have unknown land/ocean type. Observed boundary closure proves neither ownership nor absence of rivals. Use temporal events for observed changes; absence of events does not prove absence of change.",
             "net_deltas_truncated": bool(anchor.get("net_deltas_truncated")),
         }
+        from smacx_operational_context import geographic_belief_review
+        belief_review = geographic_belief_review(cognition, anchor['payload'])
+        if belief_review:
+            payload['operational_review']['geographic_belief_review'] = belief_review
         # The authoritative anchor/focus, binding commitments, and critical
         # attention are pinned. Optional interpretive recall is the first
         # runtime component discarded under pressure.
@@ -770,6 +799,8 @@ class RuntimeContextAssembler:
         # transition to placed.  Anything removed by either local attention
         # budgeting or whole-envelope pressure is detached and requeued with
         # its original stable attention ID.
+        if not payload["attention"].get("items"):
+            payload["attention"].pop("acknowledgement", None)
         original_lease_count = len(attention_lease.get("items", ()))
         placement = self.attention.restrict_for_placement(
             str(payload["attention"]["attention_lease_id"]),

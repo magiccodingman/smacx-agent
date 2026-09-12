@@ -523,6 +523,7 @@ def main() -> int:
     )
     assert home_repair["known_repair_rule_modifiers"]["base_bonus"] == 1
     assert home_repair["known_repair_rule_modifiers"]["base_facility_bonus"] == 10
+    assert "not combat strength" in repair["repair_rules_meaning"]
     pact_location = next(
         row for row in repair["repair_locations"] if row.get("base_ref") == "base-pact"
     )

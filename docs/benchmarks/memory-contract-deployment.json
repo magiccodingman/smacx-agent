@@ -1,0 +1,46 @@
+{
+  "schema": "smacx.operator-health.v1",
+  "match_id": "match-542a028ffab1c5dc9e868abd71ac87cd",
+  "sampled_unix": 1789007610.95315,
+  "state": "observed_active",
+  "reasons": [],
+  "match_status": "running",
+  "turn": 8,
+  "year": 2108,
+  "active_sovereign_runs": 2,
+  "live_sovereign_processes": 2,
+  "incidents": [],
+  "run_verification_errors": [],
+  "workers": [
+    {
+      "instance_id": "instance-2d223f4b39c84688a46d181fa7771125",
+      "running": true,
+      "paused": false,
+      "health": "healthy",
+      "mcp_status": "running",
+      "startup_failure": null
+    },
+    {
+      "instance_id": "instance-23429d86c2c9499ca5742e7725f61c42",
+      "running": true,
+      "paused": false,
+      "health": "healthy",
+      "mcp_status": "running",
+      "startup_failure": null
+    }
+  ],
+  "checkpoint": {
+    "checkpoint_id": "checkpoint-aa1a4ee01aee49cb94a8e85f4aa0a8bb",
+    "turn": 8,
+    "year": 2108,
+    "verification": {
+      "managed_seats": 2,
+      "restored_unix": 1789007526.3245711,
+      "runtime_image": "smacx-agent-worker:pr78-gameplay",
+      "status": "restore_tested"
+    }
+  },
+  "repair_commit": "dcdddde",
+  "timers": "All four existing automations PAUSED; no new timer created.",
+  "scope": "Operational restoration only; autonomous correction and speed not claimed."
+}

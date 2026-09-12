@@ -111,3 +111,61 @@ for code in ('native_action_rejected', 'invalid_choice_text', 'unexpected_choice
     assert m._refresh_rejected_decision(response, key) == response and 'recovery' not in response
 m.smac_decision = original
 print('decision recovery passed: real frame/cache/guarded selection, four-failure bound, no replay, wait/error/scope safety')
+
+# Bundled success uses actual enumeration/cache and a new guarded selection.
+clear(); phase='turn'
+original_bridge=m._call
+
+def settled_bridge(operation, **arguments):
+    result=original_bridge(operation, **arguments)
+    if operation=='semantic_command':
+        result.update(completed=True,execution={'status':'completed','native_call_attempted':True})
+    return result
+
+m._call=settled_bridge
+first=m.smac_decision()
+selected=attempt(first['decision_id'],first['choices'][0]['choice_id'])
+assert selected['completed'] and len(writes)==1
+next_frame=selected['post_action_decision']['frame']
+assert next_frame['decision_id']!=first['decision_id']
+second=attempt(next_frame['decision_id'],next_frame['choices'][0]['choice_id'])
+assert second['ok'] and len(writes)==2
+assert m.DECISION_CACHE[first['decision_id']]['consumed']
+print('post-action chain passed: observed -> cached -> returned -> guarded next selection, exactly two selected mutations')
+
+# One allowed long generation must not invalidate an otherwise guarded handle.
+from smacx_provider_watchdog import PROVIDER_GENERATION_SECONDS
+clear();phase='turn'
+frame=m.smac_decision();d=frame['decision_id'];c=frame['choices'][0]['choice_id']
+m.DECISION_CACHE[d]['created_monotonic']=time.monotonic()-PROVIDER_GENERATION_SECONDS-1
+result=attempt(d,c)
+assert result['ok'] and len(writes)==1
+assert m.DECISION_CACHE[d]['consumed']
+assert attempt(d,c)['error']['code']=='consumed_decision'
+assert len(writes)==1
+assert m.DECISION_TTL_SECONDS==PROVIDER_GENERATION_SECONDS+60
+print('long generation handle passed: bounded generation survives, native dispatch once, consumed reuse rejected')
+
+# Accepted is not completed, but a fresh observation avoids a redundant read.
+clear(); m._call=original_bridge
+first=m.smac_decision()
+selected=attempt(first['decision_id'],first['choices'][0]['choice_id'])
+assert selected['execution_status']=='accepted' and not selected.get('completed')
+assert selected['post_action_decision']['frame']['ok'] and len(writes)==1
+for extra in ({'queued':True}, {'sleep':{'reason':'foreign turn'}},
+              {'turn_handoff_required':True}, {'required_next':{'stop_after':True}}):
+    receipt={'ok':True,'execution_status':'accepted',**extra}
+    assert 'post_action_decision' not in m._attach_post_action_decision(receipt,key)
+print('accepted observation retains uncertainty; queued, sleep and handoff do not collect')
+
+# A successful empty wait frame must not simultaneously demand a choice.
+from unittest.mock import patch
+frame={'ok':True,'identity':identity,'phase':'wait','choices':[],
+       'required_next':{'stop_after':True,'ordinary_message':'WAITING'},
+       'sleep':{'kind':'waiting_for_turn'}}
+with patch.object(m,'smac_decision',return_value=frame):
+    response=m._refresh_rejected_decision({'ok':False,'error':{'code':'consumed_decision'}},key)
+assert response['required_next']==frame['required_next']
+assert 'select_choice_from' not in response['required_next']
+assert 'no replacement action' in response['error']['message']
+print('PASS: empty recovery frame preserves wait without contradictory choice instructions')

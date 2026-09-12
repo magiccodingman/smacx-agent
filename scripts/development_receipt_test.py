@@ -13,10 +13,45 @@ r=m._await_deferred_action({'ok':True,'queued':True,'action_id':1},timeout=.001)
 assert r['queued'] and not r.get('completed') and 'terraform_completion_verified' not in r
 print('development receipts distinguish work, completed terrain, and pending transport')
 
-# Actual managed choice query -> opaque selection -> guarded command -> receipt.
+# A development operation rejected before native dispatch cannot be offered
+# again against the identical meaningful state. Other legal unit choices remain.
 from unittest.mock import patch
-import json
 identity={'match_id':'match-development','session_id':'session-development','revision':'r1'}
+rows=[{'command':'terraform','unit_id':7,'former_id':0,'name':'Farm'},
+      {'command':'skip_unit','unit_id':7}]
+focus={'kind':'unit_actions','unit':{'own_unit_ref':'own-unit-7','location_ref':'location-99',
+       'moves_remaining':3,'order_name':'none'}}
+m.ACTION_PROGRESS.clear();m.FAILED_CHOICE_ATTEMPTS.clear();m.RUNTIME_CIRCUITS.clear()
+first_id,first_choices=m._cache_decision_choices(identity,rows,choice_kind='unit_actions',
+    choice_arguments={'unit_id':7},focus=focus,turn=9,year=2109,phase='turn')
+terraform_choice=next(row for row in first_choices if row['label']=='Terraform')
+def rejected_development(op,**args):
+    if op=='semantic_command':return {'ok':True,'command':'terraform','queued':True,'action_id':8}
+    if op=='action_status':return {'ok':True,'action':{'action_id':8,'command':'terraform',
+        'status':'rejected','resolution':'network_unit_lock_rejected',
+        'native_call_attempted':False,'native_result':0}}
+    raise AssertionError(op)
+with patch.object(m,'_call',side_effect=rejected_development),\
+     patch.object(m,'controller_record_campaign_action',return_value={'ok':True}),\
+     patch.object(m,'_sovereign_gameplay_gate',return_value=None),\
+     patch.object(m,'_match_briefing_gate',return_value=None),\
+     patch.object(m,'_pending_capability_gap',return_value=None):
+    rejected=m.smac_execute_choice(first_id,terraform_choice['choice_id'])
+assert rejected['execution_status']=='not_dispatched' and rejected['native_action_executed'] is False,rejected
+assert 'terraform' in rejected['error']['message'] and 'do not retry the same choice' in rejected['error']['message'],rejected
+second_id,second_choices=m._cache_decision_choices(identity,rows,choice_kind='unit_actions',
+    choice_arguments={'unit_id':7},focus=focus,turn=9,year=2109,phase='turn')
+assert [row['label'] for row in second_choices]==['Skip unit'],second_choices
+recovery=m.DECISION_CACHE[second_id]['choice_recovery']
+assert recovery['retry_same_choice'] is False and recovery['withheld_choice_count']==1,recovery
+changed_focus={**focus,'unit':{**focus['unit'],'moves_remaining':0}}
+_,changed_choices=m._cache_decision_choices(identity,rows,choice_kind='unit_actions',
+    choice_arguments={'unit_id':7},focus=changed_focus,turn=9,year=2109,phase='turn')
+assert any(row['label']=='Terraform' for row in changed_choices),changed_choices
+print('pre-dispatch development rejection is withheld only for unchanged meaningful state')
+
+# Actual managed choice query -> opaque selection -> guarded command -> receipt.
+import json
 context={'reverse_units':{7:'own-unit-7'},'reverse_locations':{99:'location-99'}}
 for command,resolution in [('found_base','native_base_founded'),('terraform','native_terraform_work_observed')]:
     calls=[];journals=[]

@@ -67,6 +67,50 @@ _RUNTIME_STATE = threading.local()
 _RUNTIME_CONTEXT_TIMEOUT_SECONDS = 120
 
 
+class _AuthorityHeartbeat:
+    """Private episode liveness, independent of provider latency and progress."""
+    def __init__(self, receipt):
+        self.receipt = dict(receipt)
+        self.stopped = threading.Event()
+        self.lost = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="smacx-authority-heartbeat", daemon=True)
+
+    def beat(self):
+        endpoint = os.environ["SMACX_RUNTIME_CONTEXT_URL"].rsplit("/runtime-context", 1)[0] + "/runtime-context/heartbeat"
+        body = {**self.receipt, "run_id": os.environ.get("SMACX_HARNESS_RUN_ID", ""),
+                "session_id": os.environ.get("SMACX_AGENT_SESSION_ID", "")}
+        request = Request(endpoint, data=json.dumps(body).encode(), method="POST", headers={
+            "Authorization": "Bearer " + _runtime_token(), "Content-Type": "application/json"})
+        with urlopen(request, timeout=5) as response:
+            if not json.loads(response.read(4096)).get("ok"):
+                raise RuntimeError("sovereign_episode_authority_lost")
+
+    def _run(self):
+        misses = 0
+        while not self.stopped.wait(30):
+            try:
+                self.beat()
+                misses = 0
+            except HTTPError:
+                self.lost.set()
+                return
+            except (URLError, TimeoutError, OSError, ValueError, RuntimeError):
+                misses += 1
+                if misses >= 3:
+                    self.lost.set()
+                    return
+
+
+def _authority_handoff():
+    from smacx_diagnostics import record
+    record("sovereign_authority_handoff", {"reason": "episode_authority_lost",
+           "automatic_action_retry": False}, actor="sovereign")
+    _end_runtime_episode(committed=False)
+    # Clean CLI termination invokes the supervisor's existing fresh-state
+    # admission and bounded no-progress-yield policy, not a model-written retry.
+    raise SystemExit(0)
+
+
 def _runtime_token() -> str:
     path = Path(os.environ.get(
         "SMACX_RUNTIME_CONTEXT_TOKEN_FILE", "/run/secrets/runtime-context-token",
@@ -98,6 +142,9 @@ def _episode_id(messages) -> str:  # noqa: ANN001
 
 
 def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
+    heartbeat = getattr(_RUNTIME_STATE, "heartbeat", None)
+    if heartbeat and heartbeat.lost.is_set():
+        _authority_handoff()
     url = os.environ.get("SMACX_RUNTIME_CONTEXT_URL", "")
     if not url:
         raise RuntimeError("smacx_runtime_context_url_missing")
@@ -106,6 +153,8 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
     query = urlencode({
         "episode_id": episode_id,
         "episode_mode": os.environ.get("SMACX_EPISODE_MODE", "gameplay"),
+        "run_id": os.environ.get("SMACX_HARNESS_RUN_ID", ""),
+        "session_id": os.environ.get("SMACX_AGENT_SESSION_ID", ""),
         "context_length": os.environ.get("SMACX_CONTEXT_LENGTH", "65536"),
         "request_tokens_before_gc": int(gc_metrics.get("before", 0)),
         "request_tokens_after_gc": int(gc_metrics.get("after", 0)),
@@ -119,6 +168,13 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
         with urlopen(request, timeout=_RUNTIME_CONTEXT_TIMEOUT_SECONDS) as response:
             value = json.loads(response.read(4_000_001))
     except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        if isinstance(exc, HTTPError) and exc.code == 409:
+            try:
+                error = str(json.loads(exc.read(4096)).get("error", ""))
+            except (ValueError, OSError):
+                error = ""
+            if error.startswith("sovereign_episode_"):
+                _authority_handoff()
         # This failure happens before provider submission, so the HTTPX
         # provider hook cannot observe it. Never include the private endpoint,
         # authorization header or an exception message that might echo them.
@@ -152,6 +208,16 @@ def _fetch_runtime_context(messages) -> tuple[dict, str]:  # noqa: ANN001
     if payload.get("schema") != "smacx.runtime-context.v1" \
             or payload.get("episode", {}).get("episode_id") != episode_id:
         raise RuntimeError("smacx_runtime_context_contract_mismatch")
+    receipt = value.get("authority_heartbeat")
+    if os.environ.get("SMACX_HARNESS_RUN_ID"):
+        if not isinstance(receipt, dict) or receipt.get("episode_id") != episode_id or not receipt.get("token"):
+            raise RuntimeError("smacx_authority_heartbeat_receipt_missing")
+        if not heartbeat or heartbeat.receipt != receipt:
+            if heartbeat:
+                heartbeat.stopped.set()
+            heartbeat = _AuthorityHeartbeat(receipt)
+            _RUNTIME_STATE.heartbeat = heartbeat
+            heartbeat.thread.start()
     return payload, episode_id
 
 
@@ -205,6 +271,10 @@ def _mark_runtime_responded() -> None:
 
 
 def _end_runtime_episode(*, committed: bool) -> None:
+    heartbeat = getattr(_RUNTIME_STATE, "heartbeat", None)
+    if heartbeat:
+        heartbeat.stopped.set()
+        _RUNTIME_STATE.heartbeat = None
     episode_id = getattr(_RUNTIME_STATE, "episode_id", "")
     url = os.environ.get("SMACX_RUNTIME_CONTEXT_URL", "")
     if not episode_id or not url:
@@ -364,6 +434,36 @@ def _replace_managed_tool_arguments(call: object, arguments: dict) -> None:
     ) if outer_was_text else outer
 
 
+def _memory_completion_content(content):
+    """Compact an explicit successful durable receipt; failures stay untouched."""
+    receipt = _managed_tool_result(content)
+    if isinstance(receipt, dict) and receipt.get("ok") is True and isinstance(receipt.get("memory_receipt"), dict):
+        return json.dumps({key: value for key, value in receipt.items() if key != "record"},
+                          ensure_ascii=False, separators=(",", ":"))
+    return content
+
+
+def _restore_terminal_receipts(messages):
+    """Retain terminal directives when Hermes replaces exact repeats with notes."""
+    rows = copy.deepcopy(messages)
+    last_user = max((i for i, row in enumerate(rows)
+        if isinstance(row, dict) and row.get("role") == "user"), default=-1)
+    terminal = {}
+    for row in rows[last_user + 1:]:
+        if not isinstance(row, dict) or row.get("role") != "tool":
+            continue
+        content = row.get("content")
+        result = _managed_tool_result(content)
+        if isinstance(content, str) and "[hermes note: this result is byte-identical" in content:
+            source = re.search(r"tool_call_id ([^\s)]+)", content)
+            if source and source.group(1) in terminal:
+                row["content"] = terminal[source.group(1)]
+                result = _managed_tool_result(row["content"])
+        if isinstance(result, dict) and (result.get("required_next") or {}).get("stop_after") is True:
+            terminal[str(row.get("tool_call_id") or "")] = row["content"]
+    return rows
+
+
 def _managed_tool_result(content: object) -> dict | None:
     """Decode direct or Hermes-wrapped MCP JSON for wire-only compaction."""
     if not isinstance(content, str):
@@ -442,6 +542,13 @@ def _collect_old_disposable_pairs(messages, tool_names, *, keep: int = 24):  # n
             continue
         if any(tool_names.get(call_id) not in _DISPOSABLE_TOOL_NAMES for call_id in ids):
             continue
+        results = [_managed_tool_result(messages[tool_row_by_id[call_id]].get("content")) for call_id in ids]
+        if any(not isinstance(result, dict) or result.get("ok") is not True
+               or any(result.get(k) for k in ("queued", "persistent", "order", "incident", "gameplay_mutations_blocked"))
+               for result in results):
+            continue
+        if message.get("content"):
+            continue  # Prose may hold the only record of strategic intent.
         groups.append({index, *(tool_row_by_id[call_id] for call_id in ids)})
     removable = groups[:-keep] if len(groups) > keep else []
     return set().union(*removable) if removable else set()
@@ -521,6 +628,12 @@ def _install() -> None:
             if not isinstance(sanitized, list):
                 return sanitized
             sanitized = canonical_system(sanitized)
+        # Normalize only explicit successful memory receipts. Preserve failures,
+        # tool pairing and durable history; do not interpret arbitrary tool prose.
+        for row in sanitized:
+            if not isinstance(row, dict) or row.get("role") != "tool":
+                continue
+            row["content"] = _memory_completion_content(row.get("content"))
             assistant_rows = [
                 index for index, message in enumerate(sanitized)
                 if isinstance(message, dict) and message.get("role") == "assistant"
@@ -563,10 +676,20 @@ def _install() -> None:
     logger = logging.getLogger("smacx.context")
 
     def compact_managed_context(messages, *, include_runtime=True):  # noqa: ANN001
+        # Inspect only this invocation's results. Historical authority loss is
+        # evidence, not an instruction to terminate a newly admitted episode.
+        last_user_index = max((i for i, row in enumerate(messages)
+            if isinstance(row, dict) and row.get("role") == "user"), default=-1)
+        if include_runtime:
+            for row in messages[last_user_index + 1:]:
+                if isinstance(row, dict) and row.get("role") == "tool":
+                    result = _managed_tool_result(row.get("content"))
+                    if isinstance(result, dict) and result.get("episode_restart_required") is True:
+                        _authority_handoff()
         # Hermes's sanitizer may return a shallow list whose message mappings
         # are still the durable transcript objects. All semantic GC and trusted
         # runtime augmentation are provider-wire transformations only.
-        sanitized = original_sanitize(copy.deepcopy(messages))
+        sanitized = original_sanitize(_restore_terminal_receipts(messages))
         if not isinstance(sanitized, list):
             return sanitized
         sanitized = canonical_system(sanitized)
@@ -576,6 +699,14 @@ def _install() -> None:
             default=-1,
         )
         compacted_reasoning = compacted_think_blocks = 0
+        # Keep one reasoning segment across tool calls. Older private reasoning
+        # remains in the durable transcript; visible prose and tool evidence
+        # are governed independently below. Never mutate transcript objects.
+        latest_reasoning = max((i for i, row in enumerate(sanitized)
+            if isinstance(row, dict) and row.get("role") == "assistant"
+            and i >= last_user and (any(str(row.get(k) or "").strip() for k in
+                ("reasoning", "reasoning_content", "reasoning_details"))
+                or "<think>" in str(row.get("content") or ""))), default=-1)
         compacted_frames = compacted_boundaries = 0
         compacted_queries = evicted_queries = 0
         pruned_tool_calls = pruned_tool_results = 0
@@ -585,7 +716,7 @@ def _install() -> None:
         historical_tool_call_ids: set[str] = set()
         pending_tool_ids: set[str] = set()
         state_rows: list[int] = []
-        decision_rows: dict[str, int] = {}
+        decision_rows: dict[str, list[tuple[int, str]]] = {}
         consumed_decision_ids: set[str] = set()
         for index, message in enumerate(sanitized):
             if not isinstance(message, dict):
@@ -600,7 +731,7 @@ def _install() -> None:
                         call["id"] for call in message.get("tool_calls") or []
                         if isinstance(call, dict) and isinstance(call.get("id"), str)
                     }
-                if index < last_user:
+                if index < last_user or index != latest_reasoning:
                     for field in ("reasoning", "reasoning_content", "reasoning_details"):
                         if field in message:
                             message.pop(field, None)
@@ -630,9 +761,14 @@ def _install() -> None:
                 if name in _STATE_TOOL_NAMES:
                     state_rows.append(index)
                 result = _managed_tool_result(message.get("content"))
+                if name == "smac_execute_choice" and isinstance(result, dict):
+                    for container in ("post_action_decision", "recovery"):
+                        nested = (result.get(container) or {}).get("frame")
+                        if isinstance(nested, dict) and isinstance(nested.get("decision_id"), str):
+                            decision_rows.setdefault(nested["decision_id"], []).append((index, container))
                 if name in {"smac_decision", "smac_choices"} and isinstance(result, dict) \
                         and isinstance(result.get("decision_id"), str):
-                    decision_rows[result["decision_id"]] = index
+                    decision_rows.setdefault(result["decision_id"], []).append((index, ""))
                 elif name == "smac_execute_choice" and isinstance(result, dict) \
                         and result.get("decision_consumed") is True:
                     arguments = _managed_tool_arguments(tool_calls_by_id.get(call_id)) or {}
@@ -647,18 +783,27 @@ def _install() -> None:
                     compacted_boundaries += 1
         superseded_consumed_rows: set[int] = set()
         for decision_id in consumed_decision_ids:
-            index = decision_rows.get(decision_id)
-            if index is None or str(sanitized[index].get("tool_call_id") or "") in pending_tool_ids:
+            for index, container in decision_rows.get(decision_id, ()):
+                if str(sanitized[index].get("tool_call_id") or "") in pending_tool_ids:
+                    continue
+                original_result = _managed_tool_result(sanitized[index].get("content"))
+                retired = {"superseded_runtime_state": True, "decision_consumed": True,
+                    "instruction": "Consumed decision; use the newest execution or recovery frame."}
+                if container and isinstance(original_result, dict):
+                    # Keep the error, effect receipt and recovery provenance.
+                    # Only its obsolete executable menu is retired.
+                    original_result[container]["frame"] = retired
+                    if (original_result.get("required_next") or {}).get("decision_id") == decision_id:
+                        original_result["required_next"] = {"superseded_runtime_state": True,
+                            "reason": "The referenced decision was consumed; use the newest frame."}
+                    sanitized[index]["content"] = json.dumps(original_result, separators=(",", ":"))
+                else:
+                    sanitized[index]["content"] = json.dumps({"ok": True, **retired}, separators=(",", ":"))
+                    superseded_consumed_rows.add(index)
+                compacted_frames += 1
+        for index in state_rows:
+            if index == state_rows[-1] and index >= last_user:
                 continue
-            sanitized[index]["content"] = json.dumps({
-                "ok": True,
-                "superseded_runtime_state": True,
-                "decision_consumed": True,
-                "instruction": "This decision was consumed by a later execution receipt. Never reuse its decision_id or choice_id; use the newest execution or recovery result and current native focus.",
-            }, separators=(",", ":"))
-            superseded_consumed_rows.add(index)
-            compacted_frames += 1
-        for index in state_rows[:-1]:
             message = sanitized[index]
             if index in superseded_consumed_rows \
                     or str(message.get("tool_call_id") or "") in pending_tool_ids:
@@ -699,17 +844,15 @@ def _install() -> None:
         # forever even though the journal and handoff already preserve the
         # durable outcome. Current-episode pairs remain untouched so provider
         # tool-call ordering stays valid while the turn is in progress.
-        filtered = []
-        for index, message in enumerate(sanitized):
-            if index < last_user and isinstance(message, dict):
-                if message.get("role") == "assistant" and message.get("tool_calls"):
-                    pruned_tool_calls += len(message.get("tool_calls") or [])
-                    continue
-                if message.get("role") == "tool" and str(
-                        message.get("tool_call_id") or "") in historical_tool_call_ids:
-                    pruned_tool_results += 1
-                    continue
-            filtered.append(message)
+        from smacx_continuation import preserve_continuation
+        continuation_metrics = {}
+        if os.environ.get("SMACX_CONSERVATIVE_CONTINUATION", "1") != "0":
+            filtered, continuation_metrics = preserve_continuation(
+                sanitized, last_user, tool_names, _managed_tool_result,
+                protected=pending_tool_ids)
+            pruned_tool_calls = pruned_tool_results = continuation_metrics["settled_protocol_pairs_removed"]
+        else:
+            filtered = sanitized
         if compacted_reasoning or compacted_think_blocks \
                 or compacted_frames or compacted_boundaries \
                 or pruned_tool_calls or pruned_tool_results:
@@ -757,6 +900,7 @@ def _install() -> None:
                     "semantic_gc": "durable_cognition_receipt",
                     "tool": tool_name,
                     "journal_event_id": result.get("journal_event_id"),
+                    "memory_receipt": result.get("memory_receipt"),
                     "retention": "Durably committed; use runtime cognition or targeted recall.",
                 }, separators=(",", ":"))
                 if call and isinstance(arguments, dict):
@@ -776,6 +920,9 @@ def _install() -> None:
             ]
             for message in query_tool_rows[:-1]:
                 if str(message.get("tool_call_id") or "") in pending_tool_ids:
+                    continue
+                previous = _managed_tool_result(message.get("content"))
+                if not isinstance(previous, dict) or previous.get("ok") is not True:
                     continue
                 message["content"] = json.dumps({
                     "ok": True, "semantic_gc": "context_pressure_query_eviction",
@@ -812,7 +959,7 @@ def _install() -> None:
             "removed_rows": removed_row_count,
         }
         from smacx_diagnostics import record
-        record("history_compaction", {**_RUNTIME_STATE.gc_metrics,
+        record("history_compaction", {**_RUNTIME_STATE.gc_metrics, **continuation_metrics,
             "reasoning_fields": compacted_reasoning, "think_blocks": compacted_think_blocks,
             "state_frames": compacted_frames, "episode_boundaries": compacted_boundaries,
             "query_results_superseded": compacted_queries,
@@ -865,6 +1012,9 @@ def _install() -> None:
         record("sovereign_response", {"message": message, "finish_reason": finish_reason},
                actor="sovereign", correlation={"episode_id": getattr(_RUNTIME_STATE, "episode_id", ""),
                  "attention_lease_id": getattr(_RUNTIME_STATE, "attention_lease_id", "")})
+        heartbeat = getattr(_RUNTIME_STATE, "heartbeat", None)
+        if heartbeat and heartbeat.lost.is_set():
+            _authority_handoff()
         if isinstance(message, dict) and isinstance(message.get("content"), str):
             message["content"] = _compact_turn_handoff(message["content"])
         _mark_runtime_responded()

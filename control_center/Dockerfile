@@ -59,9 +59,9 @@ COPY src/smacx_store.py src/smacx_control.py src/smacx_control_server.py \
     src/smacx_game_settings.py src/smacx_prompt.py src/smacx_generation.py /opt/smacx/src/
 COPY src/smacx_journal.py src/smacx_context_policy.py src/smacx_choice_preparation.py /opt/smacx/src/
 COPY src/smacx_diagnostics.py src/smacx_diagnostic_summary.py \
-    src/smacx_campaign_diagnostics.py src/smacx_intent.py /opt/smacx/src/
+    src/smacx_campaign_diagnostics.py src/smacx_intent.py src/smacx_memory_contract.py /opt/smacx/src/
 COPY src/smacx_operator.py src/smacx_ops.py src/smacx_former_attention.py src/smacx_order_attention.py src/smacx_activity.py /opt/smacx/src/
-COPY src/smacx_geographic_context.py src/smacx_operational_context.py /opt/smacx/src/
+COPY src/smacx_settlement.py src/smacx_geographic_context.py src/smacx_operational_context.py /opt/smacx/src/
 COPY src/smacx_attention.py src/smacx_spatial_scope.py src/smacx_milestones.py src/smacx_plan_health.py src/smacx_counterfactual.py src/smacx_entitlements.py src/smacx_mechanics.py \
     src/smacx_observation.py src/smacx_temporal_episodes.py src/smacx_regions.py src/smacx_runtime_context.py src/smacx_turn_wait.py src/smacx_checkpoint_policy.py \
     src/smacx_semantic_map.py src/smacx_specialists.py src/smacx_topology.py \

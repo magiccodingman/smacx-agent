@@ -9,7 +9,7 @@ import tempfile
 
 from smacx_attention import AttentionService
 from smacx_journal import CampaignJournal
-from smacx_runtime_context import RuntimeContextAssembler, _attention_payload, _force_summary
+from smacx_runtime_context import RuntimeContextAssembler, _attention_payload, _force_summary, _bounded_attention
 from smacx_store import MemoryScope, SmacxStore
 from smacx_world import WorldService
 from smacx_world_model import PerspectiveProjector, estimate_tokens
@@ -18,6 +18,11 @@ from smacx_world_types import WorldIdentity, content_hash
 
 
 def main() -> int:
+    ack = {"tool_arguments": {"attention_lease_id": "lease-test"}}
+    bounded_lease = _bounded_attention({"attention_lease_id": "lease-test", "status": "responded",
+        "acknowledgement": ack, "items": []}, token_budget=200)
+    assert "acknowledgement" not in bounded_lease
+    assert "does not acknowledge" in bounded_lease["status_meaning"]
     force = _force_summary({"world_revision": 4, "objects": [
         {"kind": "own_unit", "status": "active", "fields": {
             "roles": {"value": {"combat": True, "scout": True}, "epistemic_status": "current"},
@@ -138,7 +143,7 @@ def main() -> int:
                  "updated_unix": 1000 - index} for index in range(30)
             ],
             "beliefs": [
-                {"topic": f"belief-{index}", "content": "b" * 1200,
+                {"topic": f"belief-{index}", "content": "My island is fully revealed with no rivals." if index == 0 else "b" * 1200,
                  "updated_unix": 1000 - index} for index in range(30)
             ],
             "situation": {"summaries": [
@@ -161,6 +166,9 @@ def main() -> int:
                                   episode_mode="gameplay", context_length=65536)
         rich = assembler.build(episode_id="episode-runtime-256k",
                                episode_mode="gameplay", context_length=262144)
+        assert compact['operational_review']['geographic_belief_review'][0]['review_reason'] == 'possible_geographic_overstatement'
+        assert rich['operational_review']['geographic_belief_review']
+        assert working['sections']['beliefs'][0]['content'] == 'My island is fully revealed with no rivals.'
         assert compact["identity"] == rich["identity"]
         assert compact["identity"]["session_id"] == "session-runtime-current"
         assert compact["identity"]["action_revision"] == "action-9"
@@ -168,10 +176,30 @@ def main() -> int:
         assert compact["focus"]["mandatory"] is True
         assert compact["native_protocol"] == {
             "source": "current_native_snapshot", "phase": "interaction",
+            "faction_id": None, "current_faction_id": None,
             "required_action": "respond", "ready_unit_count": 0,
             "end_turn_blocked": None, "action_revision": "action-9",
-            "meaning": "This current native protocol controls action readiness. Projected order counts summarize observed world state and do not prove that a unit remains ready.",
+            "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
         }
+        closed = assembler.build(episode_id="episode-terminal", episode_mode="gameplay",
+            context_length=65536, episode_boundary={"turn_handoff_required": {
+                "required": True, "instruction": "Return TURN HANDOFF; no more tools."}})
+        assert closed["focus"]["kind"] == "turn_handoff"
+        assert closed["episode"]["mutation_authority"] is False
+        assert closed["gameplay_mutations_blocked"] is True
+        assert compact["episode"]["mutation_authority"] is True
+        saved_snapshot = dict(snapshot)
+        snapshot.update(faction={"id": 2}, ready_unit_refs=[],
+            protocol={"phase": "turn", "required_action": "manage_strategy_or_end_turn", "end_turn_blocked": False},
+            interaction={"kind": "turn", "engine_state": {"current_faction_id": 2}})
+        own_turn = assembler.build(episode_id="episode-own-turn-no-ready-units",
+            episode_mode="gameplay", context_length=65536)
+        assert own_turn["focus"]["kind"] == "turn"
+        assert own_turn["native_protocol"]["faction_id"] == own_turn["native_protocol"]["current_faction_id"] == 2
+        assert own_turn["native_protocol"]["ready_unit_count"] == 0
+        assert own_turn["native_protocol"]["required_action"] == "manage_strategy_or_end_turn"
+        assert "WAITING text does not end" in own_turn["native_protocol"]["meaning"]
+        snapshot.clear(); snapshot.update(saved_snapshot)
         assert compact["plan_health"]["active_plan_count"] == 1
         assert compact["plan_health"]["assigned_owned_unit_count"] == 1
         assert rich["plan_health"] == compact["plan_health"]
@@ -191,7 +219,8 @@ def main() -> int:
         lease_id = compact["attention"]["attention_lease_id"]
         attention.placed(lease_id)
         attention.responded(lease_id)
-        attention.acknowledge(lease_id, through_cursor=compact["attention"]["through_cursor"])
+        assert compact["attention"]["acknowledgement"]["tool_arguments"] == {"attention_lease_id": lease_id}
+        attention.acknowledge(compact["attention"]["acknowledgement"]["tool_arguments"]["attention_lease_id"])
         post_ack = assembler.build(episode_id="episode-runtime-after-ack",
                                    episode_mode="gameplay", context_length=65536)
         assert post_ack["attention"]["items"] == []
@@ -242,7 +271,15 @@ def main() -> int:
         assert 0 < len(visible_attention_ids) < 32
         assert burst["attention"]["remaining_count"] == 32 - len(visible_attention_ids)
         assert len(visible_attention_ids) == len(burst["attention"]["items"])
-        attention.abandon(burst["attention"]["attention_lease_id"])
+        attention.placed(burst["attention"]["attention_lease_id"])
+        attention.responded(burst["attention"]["attention_lease_id"])
+        attention.acknowledge(burst["attention"]["acknowledgement"]["tool_arguments"]["attention_lease_id"])
+        after_burst = assembler.build(episode_id="episode-runtime-after-burst",
+                                     episode_mode="gameplay", context_length=65536)
+        assert not visible_attention_ids.intersection(
+            item["attention_id"] for item in after_burst["attention"]["items"])
+        assert after_burst["attention"]["items"], "Omitted attention must remain unacknowledged"
+        attention.abandon(after_burst["attention"]["attention_lease_id"])
 
         communication = assembler.build(episode_id="episode-runtime-communication",
                                         episode_mode="communication", context_length=65536)

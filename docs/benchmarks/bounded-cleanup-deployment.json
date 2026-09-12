@@ -1,0 +1,48 @@
+{
+  "schema": "smacx.bounded-cleanup-deployment.v1",
+  "recorded_utc": "2026-09-10T00:12:31.868961+00:00",
+  "runtime_source_commit": "5fa8c34",
+  "services": {
+    "smacx-agent-control-api-1": {
+      "image": "smacx-agent-control:bounded-cleanup",
+      "id": "sha256:4abc4ca4d2c62fe316316a597dea279e682b58ead6380b5131f1da165f7ee252",
+      "state": "running",
+      "health": "healthy"
+    },
+    "smacx-agent-specialist-supervisor-1": {
+      "image": "smacx-agent-harness:bounded-cleanup",
+      "id": "sha256:e7b7d4ceb27146ef9de745c9a51f9904108a16811e37e75cd9b37ccedf1cdf1d",
+      "state": "running",
+      "health": null
+    }
+  },
+  "installed_source_checks": [
+    {
+      "source": "src/smacx_mcp.py",
+      "sha256": "f7b4d9974a274832a13c426235207a5d567abc73b38c84bd1f96909528bf25c0",
+      "matches": true
+    },
+    {
+      "source": "harness/smacx_continuation.py",
+      "sha256": "b92288cf9499f41a0a0eac286905783851f6ae15739b9bf404060d02b5ae4f77",
+      "matches": true
+    },
+    {
+      "source": "harness/smacx_strict_prompt.py",
+      "sha256": "c6eb3ce8e86335ee1360bea123dd3c1a68e3fec565755f15fa14d0cf6f344cd7",
+      "matches": true
+    }
+  ],
+  "other_main_and_readiness_containers_unchanged": true,
+  "configuration_diff": "Two service image references and control MCP/Hermes image-selection variables only.",
+  "match": {
+    "name": "AI - 5",
+    "status": "parked",
+    "turn": 3,
+    "active_sovereigns": 0,
+    "incidents": 0
+  },
+  "database_rebuild": false,
+  "native_image_changed": false,
+  "live_performance_improvement_verified": false
+}

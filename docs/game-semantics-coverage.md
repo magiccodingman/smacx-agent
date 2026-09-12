@@ -1300,3 +1300,221 @@ real controlled-provider delivery is verified; shared stack image/settings and
 six runtime source hashes match. The campaign remains parked with a checkpoint.
 No paid provider run, new native-mechanics claim or improved-strategy claim.
 See the [sanitized deployment receipt](benchmarks/operational-geography-deployment.json).
+
+### Efficient continuation checkpoint 1
+
+Settled execution → versioned fresh decision → sovereign-selectable opaque choice
+uses existing guarded enumeration. Controlled adapter/cache tests cover delivery,
+scope, pending/handoff exclusions and observation failure without action replay.
+Live timing and behavioral acceptance remain pending; no automatic next mutation.
+See [acceptance evidence](benchmarks/efficient-continuation.md).
+
+Efficient continuation checkpoint 2: stale pre-write memory rejection → fresh
+scoped evidence → explicit sovereign reconsideration/retry. Controlled tests
+verify no rebase, no repeated write, and preservation of uncertain commit status.
+Evidence-scope guards and lease-only attention acknowledgement remain authoritative.
+
+Efficient continuation checkpoint 3: provider-only retention preserves strategic
+prose alongside tool calls, recent episode, unresolved failures and unsuperseded
+query evidence. Exact duplicate prose can be removed under pressure. Current
+runtime cognition stays journal-derived; no inferred semantic summary is created.
+Controlled retention tests pass; model strategic equivalence is not claimed.
+
+Efficient continuation integrated acceptance: installed Hermes/provider capture
+and guarded two-action adapter chain pass. Nested-frame lifecycle, journal scope,
+fairness, attention, context pressure and immutable audit checks pass. Live game
+latency/strategic outcomes remain explicitly unvalidated; see benchmark evidence.
+
+Continuation cleanup checkpoints: expired receipt protocol is compacted while
+outcome/provenance/unknown obligations and strategic prose survive captured-request
+replay. Physical boundary completeness reaches anchors and registry queries;
+runtime assembly flags possible belief overstatement without modifying cognition.
+Later movement placement is revision-matched and does not imply task completion.
+See [cleanup acceptance](benchmarks/continuation-cleanup.md) for evidence and limits.
+
+Continuation baseline audit checkpoint: 111 original trace cuts replayed through
+real Hermes with fixed system/runtime/tools reproduce their deployed tokenizer
+counts. The deployed policy remains +13.18% above original history policy; an
+additional lossless transport pass lowers this to +11.56%, preserving prose and
+uncertain evidence. Net speed/token-reduction acceptance is **open**, not complete.
+Observed bundled choices establish sovereign use, not a causal latency improvement.
+Provider-reported usage differs from current tokenizer counts and remains separately
+reported. The base-tile restriction is explicitly location-local in provider-facing
+advisories; adapter tests pass, live behavioral improvement and deployment are pending.
+See [baseline audit and limits](benchmarks/continuation-baseline-audit.md).
+
+Bounded cleanup deployment checkpoint: category-level replay confirms the same
+111-cut totals. Additional bookkeeping/query pruning is deferred where benefit
+or joint evidence retention is not established. Lossless formatting and the
+local-base-tile advisory pass installed-image tests, including controlled Hermes
+provider startup/resume. Shared control is healthy and installed hashes match;
+AI - 5 remains parked at turn 3. Other main/readiness services and configuration
+are unchanged. [Deployment evidence](benchmarks/bounded-cleanup-deployment.json).
+Live turn-time improvement remains unverified.
+
+Reasoning-continuation correctness checkpoint: lease acknowledgement arguments
+survive bounded request assembly; full acknowledgement remains limited to the
+final placed batch, with omitted items requeued. Fresh bundled decision guards
+are documented without changing validation or write authority.
+
+Reasoning retention checkpoint: real Hermes provider-copy cleanup preserves the
+latest meaningful segment, visible uncertainty prose, tool receipts and durable
+history. Earlier private alternatives are intentionally omitted; strategic
+equivalence and live performance remain open. Earlier 111-cut tokenizer results
+exclude reasoning and are not total generation input measurements. See
+[acceptance and measurement limits](benchmarks/reasoning-continuation.md).
+
+Reasoning deployment checkpoint: rebuilt control/harness images pass installed
+checks; live source hashes match and control is healthy. AI - 6 is completed;
+no live improvement claim is made before the AI - 7 observation window.
+
+AI - 7 early live checkpoint: 81/81 requests deliver acknowledgement arguments
+and retain at most one reasoning segment; 12/12 acknowledgements succeed. Stale
+memory guard recovery succeeds explicitly. Spartan provider latency is lower in
+this sample; Peacekeeper latency is essentially unchanged. A generic invalid-plan
+error induces loss of binding, and a repair modifier is misread as combat defense.
+Those semantic gaps and broad performance/strategy acceptance remain open.
+See [thirty-minute review](benchmarks/ai7-thirty-minute-review.md).
+
+Semantic clarity checkpoint: plan reference syntax errors identify the precise
+array field/index; controlled rejection-to-explicit-retry preserves participant
+bindings and journal safety. Provider-facing repair objects now carry repair-only
+scope across restored/inspected/anchor paths without changing epistemic state;
+logistics and runtime defense boundaries separate repair from combat. Live model
+interpretation remains open. [Evidence](benchmarks/semantic-clarity-followup.md).
+
+Semantic clarity deployment/recovery checkpoint: turn-5 paired restore tested
+for both seats, no remaining incidents, both sovereigns active. Two actual resumed
+provider requests carry repair-only scope and explicit plan-reference guidance.
+Live decision quality remains pending the scheduled follow-up; speed is not required.
+
+Early follow-up: repair label reaches the provider but the model still misuses
+the repair bonus as defense; interpretation acceptance remains open. New indexed
+reference guidance is not exercised live yet. Separate partial plan-update errors
+leave an old plan unresolved. Farm completion is observed; recovery remains active
+without incidents. Timer cancelled at user request; see semantic-clarity evidence.
+
+| Typed memory cleanup checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Complete record revision and preservation | Observed live partial plan-update failures; represented by shared seven-family input contracts; calculated validation reports bounded nested errors. Provider-queryable `contract` and `editable_record` use the existing memory tool. Managed read-edit-write tests execute all seven record families and verify canonical effect, binding preservation, explicit clearing and journal reopening. Installed delivery and live recovery pending. |
+| Malformed/misplaced fields and uncertain writes | Controlled reproduction exposed silent participant/reconciliation loss. Invalid shape is now rejected before writes; numeric coercion and duplicate JSON fields rejected. Injected SQL/journal/runtime failures distinguish uncommitted, uncertain and committed receipts. Scoped event/faction and stale-native-guard regressions pass; no automatic retry/merge. |
+
+See [memory contract acceptance](benchmarks/memory-contract-cleanup.md). AI - 7 is
+parked with a paired turn-8 checkpoint. Behavioral improvement remains unproven;
+no new timer will be scheduled.
+
+Installed-image checkpoint: seven-family managed read-edit-write, rejected-write
+status feedback, fresh-guard discovery and the 15-tool schema budget pass using
+packaged source. Deployment and paired native recovery still pending.
+
+Controlled real-Hermes checkpoint: installed harness provider capture passes for
+initial/resumed direct schemas, preserved conversation and generation settings.
+Shared-stack deployment and live paired recovery are the remaining gates.
+
+Deployment/native recovery checkpoint: running control source hashes match the
+repair commit; both MCP sidecars use the new image. Paired turn-8 native/AI
+checkpoint is restore-tested for two seats with no incidents. Automatic sovereign
+reconnection remains the last operational gate; live correction remains unproven.
+
+Final operational acceptance: AI - 7 resumed at turn 8, `observed_active`, two
+verified live sovereign processes, healthy worker/MCP pairs, no incidents or run
+verification errors. See [deployment receipt](benchmarks/memory-contract-deployment.json).
+No timer created. Live model correction and speed remain unclaimed.
+
+| Sovereign lease lifecycle checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Long-lived episode ownership | Observed AI - 8's exact 900-second expiry and subsequent blocked gameplay. Represented by existing durable lease identity. Calculated renewal requires an unexpired matching token/run/session/timeline and leaves the turn fence unchanged. Controlled-clock real-SQL/HTTP tests pass across the old deadline; private Hermes heartbeat transport is tested. Installed-image tests and real Hermes slow-provider capture verify renewal during inference without leaking the receipt into provider requests. Two live episodes extended expiry by ~60 seconds with acquisition unchanged; full 900-second crossing is controlled-clock evidence. |
+| Authority-loss recovery | Managed gameplay and memory writes reject dead authority; client loss triggers deterministic clean exit before the next request/returned tool batch. Existing supervisor process-stop cleanup, fresh-state admission and no-progress policy remain. Rejected-action replay is not introduced. Forced authority loss exits the actual Hermes CLI with status 0 and no further inference. AI - 7 turn 11 and AI - 8 turn 1 restored with matching memory projections, two active sovereign runs each and no incidents. |
+
+Details: [sovereign lease repair acceptance](benchmarks/sovereign-lease-renewal.md).
+
+| Provider content liveness | AI - 7's interruption was observed during active reasoning. Trusted SSE content is represented by a private request-scoped watermark; a bounded drain distinguishes silence and excessive generation from native progress. Controlled streaming/terminal/identity tests and supervisor reconciliation preserve the independent gameplay clock. Installed-image and real Hermes streaming/provider-boundary checks pass; deployed and both paired campaigns observed active with no incidents. Long-generation live acceptance remains for scheduled checks. See [acceptance](benchmarks/provider-stream-liveness.md). |
+
+| Decision lifetime / scheduled check 1 | Observed 316.99-second generation invalidating a five-minute handle. Retention now derives from the bounded generation budget, while original native guards and one-use semantics remain. Controlled long-generation selection and stale/cross-scope/failure-budget checks pass. AI - 8's supplied recovery IDs reached the provider; model copying remains unproven. [Evidence](benchmarks/stream-check-1.md). |
+
+| Interaction overhead capability | Acceptance chain and limits |
+| --- | --- |
+| Interaction overhead / continuation checkpoint | Accepted nonqueued execution now supplies a fresh guarded frame without certifying completion. Consumed recovery menus retire in the provider copy; errors and durable history remain. Empty attention batches omit acknowledgement invitations. Controlled adapter and actual Hermes sanitizer tests pass; live quality/latency acceptance pending. [Evidence](benchmarks/interaction-overhead.md). |
+| Reviewed notification / overhead checkpoint | Bounded managed drain uses existing native-reviewed classification and guarded one-use execution, captures durable attention before dismissal, and never cognitively acknowledges the notice. Generic dialogs and strategic choices stay sovereign-controlled. Orchestration fixture passes. Live INTRO/SIMULYOU dismissal returned a turn frame; captured notice IDs and payloads reached subsequent provider requests. Strategic quality over full turns remains pending. Persistent destination queries gain a semantic-selector hint only when advertised by the native catalog. [Evidence](benchmarks/interaction-overhead.md). |
+| Interaction latency acceptance report | Single-perspective activity-window report reproduces the reviewed 23-response baseline; deduplication, first-content timing, partial-window and unavailable-usage fixtures pass. Full faction-turn boundaries and strategic quality remain operator-reviewed evidence, not inferred by counters. [Evidence](benchmarks/interaction-overhead.md). |
+| Recovery introduction / overhead follow-up | Initial live accepted acknowledgement returned a fresh decision directly. Include the bridge's separately reviewed non-diplomatic INTRO classification in automatic capture/dismissal; generic one-button and diplomatic choices remain excluded. Controlled INTRO drain passes; deployment/live verification recorded in [acceptance evidence](benchmarks/interaction-overhead.md). |
+
+### Settlement assistance checkpoint (2026-09-10)
+
+| Capability | Acceptance | Remaining evidence |
+|---|---|---|
+| Intent/area-led settlement discovery | Actual MCP adapter fixture: four candidates, 1,384 conservative tokens, two bounded native calls; arbitrary nominated compare retained | Installed-image and bounded native validation pending |
+| Feasible growth/production explanations and shared capacity | Exhaustive allocation regression and reserved/shared worker fixtures pass; heuristic labels explicitly conditional | No live economic or border-change exactness claimed |
+| Fog terrain/resource entitlement | Settlement-only physical descriptors; hidden improvements and dynamic faction state excluded | Native isolation regression pending |
+| Persistent base resource access alerts and revisiting | Implemented through frozen observation/attention plus base field | Recovery/provider-query acceptance pending |
+
+Evidence: [settlement assistance](benchmarks/settlement-assistance.md). No capability is marked
+fully accepted merely because its calculator or fixture exists.
+
+Settlement checkpoint 2: collector/journal/attention/base-query/restart integration passes;
+actual compiled public-access helper passes controlled Treaty/occupation/reservation/fog cases.
+Native mechanics still conditional; no exact post-founding border prediction. Deployment and
+installed-image checks remain pending. See the settlement acceptance evidence above.
+
+Settlement checkpoint 3: isolated native read restoration, tested hidden-input independence,
+and real founding-center prediction/effect comparison passed. Four-candidate provider payload
+is 1,481 conservative tokens. Existing managed action, opaque execution, recovery, global
+pipeline, runtime context, geography and attention suites passed. Installed control module
+hash matches source. This does not establish exact border effects or autonomous strategic
+quality; those remain explicitly unclaimed. See [acceptance JSON](benchmarks/settlement-assistance.json).
+
+Settlement deployment: public-stack control health and configured worker/MCP/harness images
+verified, with installed module/manifest hashes matching source. Both prior campaigns remain
+completed. Native tested center effects and recovery/query contracts are accepted at the
+explicit scope recorded above; strategic quality across new games is not yet measured.
+
+| Bookkeeping continuation checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Duplicate typed memory | Recorded repeated live writes → canonical normalized comparison → explicit provider completion receipt → same seven managed write families → real journal head unchanged on repeats, changed evidence retained → reopen and citation-scope checks pass. In-process sustained repetition enters existing incident path; long-run behavior pending. |
+| Notification readiness | Recorded historical/current readiness conflict → historical information separated from current native protocol → provider runtime projection → sovereign still acknowledges explicitly → original capture preserved. No automatic cognitive acknowledgement. |
+| Combined attention/action | Explicit reviewed lease in choice call → normal acknowledgement authority → guarded native dispatch → independent acknowledgement and failed-action receipts verified with controlled execution. Existing real attention durability/redelivery tests pass; live combined-action behavior pending. |
+| Completion continuity | Actual preceding receipts were visible in the failing run → compact explicit saved/unchanged wire receipt → recent-history and cleanup retention contracts → strategic rationale/errors preserved. No general context-length or speed claim. |
+
+See [bookkeeping continuation acceptance](benchmarks/bookkeeping-continuation.md).
+
+| Development rejection / spectator lifecycle checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Guarded multiplayer development recovery | AI - 9's repeated exact Farm choice and safe circuit stop are preserved. Deferred development now exposes the exact pre-dispatch guard, reports native dispatch only after lock acquisition, and carries the command through the receipt. Managed frames withhold that exact rejected choice for the unchanged semantic state while retaining alternatives; changed state re-enables enumeration. Controlled managed/source contracts pass. Restored two-client native progress remains the effect-verification gate. |
+| Blazor live-page teardown | The spectate `CancellationTokenSource_Disposed` exception was reproduced in-browser. Spectate, lobby-directory and play polling resources now have local ownership, idempotent cancellation and single JS disposal. Portal build and 88 tests pass. Deployed repeated navigation and responsive browser checks remain pending. |
+| Popup dismissal and spectator presentation | Live Spartan spectate showed a stale `INTRO` frame after its semantic protocol entered foreign-turn wait. Guarded acknowledgement now reports acceptance separately from observed dismissal, retains exact popup object/generation authority through the transition, and redraws the native world only after the modal leaves the stack. The focused source contract and complete bridge cross-build pass. Both campaigns were parked at verified checkpoints; owner-directed live visual verification remains pending. |
+| Parked runtime rebase | Both owner resumes failed closed because parked seats retained prepared worker `0f36a318cf6a` while the deployed reviewed worker was `287e04469e47`; checkpoints remain verified. Every verified restore now reconciles managed seats to the configured content-addressed worker image before native startup. Controlled ordinary-resume orchestration proves rebase precedes worker start, identity import and collector publication. Owner resume remains pending. |
+
+See [development and spectator acceptance](benchmarks/development-rejection-and-spectate-lifecycle.md).
+
+| September 12 supervision checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Streaming liveness during telemetry read | Observed live-request incident → production clock-order repair → delayed-read regression and bounded watchdog tests pass. Native progress is never inferred from streamed content. Live recovery/progression pending. |
+| Zero-ready-unit turn ownership | Observed instruct misinterpretation despite legal End turn choice → explicit own/current faction IDs and current-protocol guidance → runtime assembly test with own turn and zero ready units. Sovereign keeps the choice; improved live compliance remains unproven. |
+
+See [September 12 supervision evidence](benchmarks/sep12-campaign-supervision.md).
+
+| Clean-yield incident retry after update | Live portal request exposed backend kind mismatch → exact clean-yield kind admitted → incident latch/idempotency/unrelated-kind tests and verified recovery ordering pass. AI9 live restoration remains the acceptance gate. |
+
+September 12 deployment gate: both campaign recovery operations completed at 14:30 UTC, including AI9's formerly rejected clean-yield retry. Current control source hashes match tested code. Sustained turn progression and model adherence remain pending the scheduled 15-minute checks; successful recovery alone is not full acceptance.
+
+| First stability-check follow-up | Acceptance chain and limits |
+| --- | --- |
+| Empty rejected-choice recovery | Live consumed automatic popup choice → contradictory select/wait directive identified → nonempty actionable frames alone offer replacement selection → decision-cache wait/recovery contracts pass. |
+| Foreign-wait memory repetition | Live duplicate writes with receipts present in provider history → fresh same-session native wait check → bounded existing per-seat suspension instead of campaign quarantine → facade own/unknown/mismatched-state circuits and supervisor finite suspension/wake tests pass. Live adherence still pending. |
+
+First-check follow-up deployment: both campaigns resumed by 14:56 UTC after verified restoration (AI9 turn 21, AI10 turn 12). MCP source hash matches the tested repair. Sustained progression remains pending; no healthy-check credit is awarded for this repair cycle.
+
+15:13 UTC live gate: both campaigns advanced (AI9 21→22; AI10 12→13), no active incidents, native-verified peer sleep, and bounded streaming admission observed. First healthy check of three; sustained acceptance remains open.
+
+15:29 UTC check: AI10 advanced to turn 14; AI9's four invented decision IDs were safely rejected despite valid recovery frames in captured provider requests. The choice guard is verified effective, but model compliance/stability failed. Evidence retained; AI9 recovery queued without changing guard semantics. Healthy-check count reset.
+
+| Ultimatum / terminal episode checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Rejected energy-counter ultimatum | Live WEASELOUT blockage → existing semantic offer/affordability path → narrow multiplayer accept/reject gate → exact private-save two-client native replay confirms transfer, relations, dialogue completion and unchanged units/bases; invalid and duplicate submissions rejected. Production autonomous reuse pending. |
+| Handoff fence in provider evidence | Live next-turn focus contradicted fenced episode; repeated receipts became generic retry notes → current fence passed to runtime assembler with handoff focus and no gameplay authority → wire-only terminal receipt retention; fresh episode unaffected → assembler, HTTP handler and recorded-fence tests pass. No gameplay gate relaxation. Live adherence pending. |
+
+At 16:13 UTC, the ultimatum/handoff repair deployment completed both verified recoveries: AI9 at turn 22 and AI10 at turn 15, each observed active with two sovereign processes and no health reasons. Public control runtime-context hash matches tested source. AI10 restart waited for paired memory rebuilds before admission. Installed Hermes wire/sanitizer regression also passes. Healthy checks remain 0/3 after this repair; autonomous ultimatum reuse and sustained handoff adherence remain pending.
+
+At 16:30 UTC, first post-repair healthy check: AI9 advanced 22→24 and AI10 15→16, both observed active with no incidents or health reasons. Own-faction sovereigns had recent native progress; peers were in verified foreign-turn sleep with zero consecutive nonprogressing clean yields. This verifies continued autonomous advancement, not proof that this replay selected the exact ultimatum branch. Healthy checks: 1/3; monitoring continues. Disk has 160 GB available; no cleanup performed.
+
+| Spore damage reports | SPORESLAUNCHED/SPOREFOREST observed/source-audited → exact reviewed labels → existing durable notification capture before guarded acknowledgement; compiled predicate and bounded drain tests pass, native build passes. Live recurrence/peer continuation pending. |

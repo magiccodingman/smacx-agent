@@ -603,6 +603,17 @@ void begin_popup_transition(BasePop* popup) {
     pending_popup_object = popup;
 }
 
+void redraw_after_popup_transition() {
+    // Popup completion removes a separate native window from the modal stack,
+    // but an inactive multiplayer perspective may not receive another map
+    // paint before it yields for a foreign turn.  Present one authoritative
+    // map frame after the popup is actually gone so read-only spectators do
+    // not keep seeing the dismissed dialog.  This runs through the same
+    // UI-thread bridge dispatch as the guarded popup callback.
+    if (!WorldWin) return;
+    GraphicWin_redraw(WorldWin);
+}
+
 bool popup_transition_is_pending() {
     if (!pending_popup_transition) return false;
     if (!agent_popup_object_is_active(pending_popup_object)
@@ -612,6 +623,7 @@ bool popup_transition_is_pending() {
         pending_popup_generation = 0;
         pending_popup_label.clear();
         pending_popup_object = NULL;
+        redraw_after_popup_transition();
         return false;
     }
     return true;
@@ -4145,6 +4157,10 @@ bool reviewed_information_popup(const std::string& label) {
         // the shared timer has already crossed its threshold. Acknowledging it
         // only dismisses presentation on this client.
         || label == "TIMEWARNING"
+        // mod_action_destroy has already removed the improvement/forest.
+        // Script.txt supplies text only; popp ignores the dismissal result.
+        // Native continuation owns order completion, not this acknowledgement.
+        || label == "SPORESLAUNCHED" || label == "SPOREFOREST"
         // The base-support routine selected a unit for forced disbanding.
         // It performs the removal after this notice returns. Acknowledgement
         // offers no alternative, but is not itself proof of completed removal.
@@ -4660,6 +4676,8 @@ bool semantic_interaction_command(const std::string& command) {
     }
     return false;
 }
+
+std::string settlement_public_access(int faction, int x, int y, int own_base);
 
 uint32_t semantic_base_state_flags(const BASE& base) {
     // Several native/Thinker bookkeeping bits change while the event loop is
@@ -7873,6 +7891,7 @@ std::string bases_response() {
             const bool worked = (base.worked_tiles & (1 << tile_index)) != 0;
             out << "{\"location_ref\":\"location-" << semantic_tile_id(tile_x, tile_y)
                 << "\",\"worked\":" << (worked ? "true" : "false")
+                << ",\"access\":" << settlement_public_access(faction_id, tile_x, tile_y, i)
                 << ",\"yields\":{\"nutrients\":"
                 << mod_crop_yield(faction_id, i, tile_x, tile_y, 0)
                 << ",\"minerals\":" << mod_mine_yield(faction_id, i, tile_x, tile_y, 0)
@@ -9568,6 +9587,34 @@ struct SiteEconomyReadGuard {
     }
 };
 
+// Read-only public access facts. No hidden worker assignments or enemy identities.
+std::string settlement_public_access(int faction, int x, int y, int own_base) {
+    MAP* sq = mapsq(x, y);
+    if (!sq || !sq->is_visible(faction)) return "null";
+    bool blocked = false, reserved = false;
+    for (int id = 0; id < *BaseCount; ++id) {
+        BASE& other = Bases[id];
+        if (id == own_base || other.faction_id != faction || map_range(x,y,other.x,other.y) > 2) continue;
+        for (int offset = 1; offset < 21; ++offset) {
+            int tx=0, ty=0;
+            if ((other.worked_tiles & (1 << offset)) && next_tile(other.x,other.y,offset,&tx,&ty)
+                && tx==x && ty==y && (sq->owner < 0 || sq->owner == faction)) reserved = true;
+        }
+    }
+    for (int id = 0; id < *VehCount; ++id) {
+        VEH& veh = Vehs[id];
+        if (veh.x == x && veh.y == y && (veh.faction_id == faction || veh.is_visible(faction))
+            && (veh.order == ORDER_CONVOY || (veh.faction_id != faction
+                && !has_treaty(faction, veh.faction_id, DIPLO_TREATY|DIPLO_PACT)))) blocked = true;
+    }
+    std::ostringstream out;
+    out << "{\"foreign_territory\":" << (sq->owner >= 0 && whose_territory(faction,x,y,0,0) != faction ? "true" : "false")
+        << ",\"visible_occupation_constraint\":" << (blocked ? "true" : "false")
+        << ",\"reserved_by_other_owned_base\":" << (reserved ? "true" : "false")
+        << '}';
+    return out.str();
+}
+
 std::string site_economy_receipt(int faction_id, int x, int y) {
     MAP* center = mapsq(x, y);
     if (*BaseCount >= MaxBaseNum || !center || center->is_base()
@@ -9613,6 +9660,8 @@ std::string site_economy_receipt(int faction_id, int x, int y) {
     };
     std::ostringstream out;
     out << "{\"coverage\":\"fixed_current_territory_and_owned_worker_assignments\""
+        << ",\"benchmark_colony_mineral_cost\":" << mineral_cost(guard.base_id, BSC_COLONY_POD)
+        << ",\"nutrients_per_citizen\":" << Rules->nutrient_intake_req_citizen
         << ",\"evidence_kind\":\"native_helper_hypothesis\",\"epistemic_status\":\"conditional\""
         << ",\"center\":{\"location_ref\":\"location-" << semantic_tile_id(x, y)
         << "\",\"epistemic_status\":\"conditional\",\"yields\":" << yields(x, y) << '}'
@@ -9630,7 +9679,8 @@ std::string site_economy_receipt(int faction_id, int x, int y) {
         for (int id = 0; id < *VehCount; ++id) {
             VEH& veh = Vehs[id];
             if (veh.x == tx && veh.y == ty && (veh.faction_id == faction_id
-                || veh.is_visible(faction_id)) && (veh.faction_id != faction_id
+                || veh.is_visible(faction_id)) && ((veh.faction_id != faction_id
+                && !has_treaty(faction_id, veh.faction_id, DIPLO_TREATY|DIPLO_PACT))
                 || veh.order == ORDER_CONVOY)) occupied = true;
         }
         bool workable = !sq->is_base() && (sq->owner < 0 || sq->owner == faction_id)
@@ -9838,7 +9888,11 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
         if (comma) out << ',';
         comma = true;
         const bool ocean = is_ocean(sq);
-        out << "{\"location_ref\":\"location-" << tile_id << "\",\"tile_id\":" << tile_id
+        bool coastal = false;
+        for (auto& adjacent : iterate_tiles(x, y, 1, 9))
+            coastal |= is_ocean(adjacent.sq) != ocean;
+        out << "{\"coastal_access\":" << (coastal ? "true" : "false")
+            << ",\"location_ref\":\"location-" << tile_id << "\",\"tile_id\":" << tile_id
             << ",\"epistemic_status\":\"current\",\"source\":\"native_guarded_receipt\""
             << ",\"legal_for_land_colony\":"
             << (can_build_base(x, y, faction_id, TRIAD_LAND) ? "true" : "false")
@@ -9855,7 +9909,22 @@ std::string semantic_base_site_receipts_response(const std::string& request) {
         for (int offset = 0; offset < 21; ++offset) {
             int rx = 0, ry = 0;
             MAP* radius_sq = next_tile(x, y, offset, &rx, &ry);
-            if (!radius_sq || !radius_sq->is_visible(faction_id)) continue;
+            if (!radius_sq) continue;
+            if (!radius_sq->is_visible(faction_id)) {
+                if (!field_bool(request, "terrain_potential", false)) continue;
+                if (radius_comma) out << ',';
+                radius_comma = true;
+                // Explicit settlement-only terrain entitlement. Do not call yield helpers
+                // against hidden improvements, ownership, units or foreign projects.
+                out << "{\"location_ref\":\"location-" << semantic_tile_id(rx, ry)
+                    << "\",\"source\":\"settlement_terrain_entitlement\",\"availability\":\"unknown\""
+                    << ",\"terrain\":" << json_string(is_ocean(radius_sq) ? "ocean" : "land")
+                    << ",\"rainfall\":" << (radius_sq->is_rainy() ? 2 : radius_sq->is_moist() ? 1 : 0)
+                    << ",\"rockiness\":" << (radius_sq->is_rocky() ? 2 : radius_sq->is_rolling() ? 1 : 0)
+                    << ",\"resource_bonus\":" << bonus_at(rx, ry)
+                    << ",\"river\":" << ((radius_sq->items & BIT_RIVER) ? "true" : "false") << '}';
+                continue;
+            }
             if (radius_comma) out << ',';
             radius_comma = true;
             ++known_radius_count;
@@ -10591,6 +10660,7 @@ std::string perspective_world_page_response(const std::string& request) {
                         << semantic_tile_id(tile_x, tile_y)
                         << "\",\"worked\":"
                         << ((base.worked_tiles & (1 << tile_index)) ? "true" : "false")
+                        << ",\"access\":" << settlement_public_access(faction_id, tile_x, tile_y, index)
                         << ",\"yields\":{\"nutrients\":"
                         << mod_crop_yield(faction_id, index, tile_x, tile_y, 0)
                         << ",\"minerals\":"
@@ -15365,10 +15435,11 @@ std::string semantic_command_response(const std::string& request) {
         && active_default_popup();
     bool validated_multiplayer_energy_demand_response =
         command == "respond_to_diplomatic_offer"
-        && bribe_demand_label(active_label)
+        && (bribe_demand_label(active_label) || active_label == "WEASELOUT")
         && (field_string(request, "response") == "reject"
             || field_string(request, "response") == "accept"
-            || field_string(request, "response") == "counter")
+            || (bribe_demand_label(active_label)
+                && field_string(request, "response") == "counter"))
         && multiplayer_contact_other >= 1
         && multiplayer_contact_other < MaxPlayerNum
         && multiplayer_contact_other != faction_id
@@ -16276,8 +16347,13 @@ std::string semantic_command_response(const std::string& request) {
         // adapter, not a generic popup completion routine, and intentionally
         // refuses the button-only mode used by PLANETFALL.
         BasePop_on_button_clicked(active, 0);
+        bool transition_pending = popup_transition_is_pending();
         return std::string("{\"ok\":true,\"command\":\"acknowledge_popup\",\"popup_label\":")
-            + json_string(label.c_str()) + '}';
+            + json_string(label.c_str())
+            + ",\"dismissal_verified\":" + (transition_pending ? "false" : "true")
+            + ",\"transition\":"
+            + json_string(transition_pending ? "waiting_for_engine" : "completed")
+            + ",\"follow_up\":\"Observe the native interaction. Do not infer dismissal from command acceptance alone.\"}";
     }
     if (command == "respond_to_contact") {
         std::string label = agent_popup_label();
@@ -19140,7 +19216,8 @@ std::string semantic_command_response(const std::string& request) {
             deferred_action.status = "rejected";
             return error_response("development_queue_failed", "Native development action could not be queued.");
         }
-        return std::string("{\"ok\":true,\"queued\":true,\"action_id\":")
+        return std::string("{\"ok\":true,\"command\":") + json_string(command.c_str())
+            + ",\"queued\":true,\"action_id\":"
             + std::to_string(deferred_action.id) + '}';
     }
     if (command == "found_base") {
@@ -21049,14 +21126,28 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             });
             const int id = deferred_development_unit_id, former = deferred_development_former_id;
             const int faction = game_active() ? *CurrentPlayerFaction : -1;
-            if (faction < 1 || !*MultiplayerActive || !human_turn_actionable(faction)
-            || !multiplayer_development_eligible(faction, id, former)
-            || Vehs[id].x != deferred_development_x || Vehs[id].y != deferred_development_y
-            || semantic_vehicle_handle(id) != deferred_development_handle) {
+            const char* precondition_failure = NULL;
+            if (faction < 1 || !*MultiplayerActive) {
+                precondition_failure = "native_context_unavailable_before_execution";
+            } else if (!human_turn_actionable(faction)) {
+                precondition_failure = "turn_not_actionable_before_execution";
+            } else if (id < 0 || id >= *VehCount) {
+                precondition_failure = "development_unit_missing_before_execution";
+            } else if (Vehs[id].faction_id != faction) {
+                precondition_failure = "development_unit_owner_changed_before_execution";
+            } else if (Vehs[id].x != deferred_development_x
+            || Vehs[id].y != deferred_development_y) {
+                precondition_failure = "development_unit_location_changed_before_execution";
+            } else if (semantic_vehicle_handle(id) != deferred_development_handle) {
+                precondition_failure = "development_unit_identity_changed_before_execution";
+            } else if (!multiplayer_development_eligible(faction, id, former)) {
+                precondition_failure = "development_choice_no_longer_legal_before_execution";
+            }
+            if (precondition_failure) {
                 deferred_development_unit_id = -1;
                 deferred_action.native_call_attempted = 0;
                 deferred_action.status = "rejected";
-                deferred_action.resolution = "state_changed_before_execution";
+                deferred_action.resolution = precondition_failure;
                 return true;
             }
             deferred_development_faction = faction;
@@ -21065,23 +21156,41 @@ bool agent_bridge_handle_message(HWND hwnd, UINT msg) {
             deferred_development_units_before = *VehCount;
             deferred_development_sent_at = GetTickCount();
             deferred_development_sent = true;
-            deferred_action.native_call_attempted = 1;
             if (former < 0) {
+                deferred_action.native_call_attempted = 1;
                 net_action_build(id, NULL);
             } else {
                 // Same order/synchronization/action sequence as Console_terraform,
                 // without its UI selection side effects on unrelated vehicles.
                 net_int_t locked_id = id;
-                if (NetDaemon_lock_veh(NetState, &locked_id, 0, -1, -1, 0)
-                || locked_id != id || !multiplayer_development_eligible(faction, id, former)
-                || semantic_vehicle_handle(id) != deferred_development_handle) {
+                int lock_result = NetDaemon_lock_veh(
+                    NetState, &locked_id, 0, -1, -1, 0);
+                if (lock_result) {
+                    deferred_development_unit_id = -1;
+                    deferred_development_sent = false;
+                    deferred_action.native_call_attempted = 0;
+                    deferred_action.status = "rejected";
+                    deferred_action.resolution = "network_unit_lock_rejected";
+                    return true;
+                }
+                const char* locked_failure = NULL;
+                if (locked_id != id) {
+                    locked_failure = "network_unit_lock_remapped";
+                } else if (semantic_vehicle_handle(id) != deferred_development_handle) {
+                    locked_failure = "development_unit_identity_changed_after_lock";
+                } else if (!multiplayer_development_eligible(faction, id, former)) {
+                    locked_failure = "development_choice_changed_after_lock";
+                }
+                if (locked_failure) {
                     NetDaemon_unlock_veh(NetState);
                     deferred_development_unit_id = -1;
                     deferred_development_sent = false;
+                    deferred_action.native_call_attempted = 0;
                     deferred_action.status = "rejected";
-                    deferred_action.resolution = "state_changed_before_execution";
+                    deferred_action.resolution = locked_failure;
                     return true;
                 }
+                deferred_action.native_call_attempted = 1;
                 Vehs[id].order = former + VehOrderFormerFirst;
                 synch_veh(id);
                 NetDaemon_await_synch(NetState);

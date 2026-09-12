@@ -10,7 +10,7 @@ from typing import Any, Iterable, Mapping
 import uuid
 
 from smacx_journal import CampaignJournal
-from smacx_store import MemoryScope, SmacxStore
+from smacx_store import MemoryScope, SmacxStore, StoreError
 from smacx_world_types import canonical_json, content_hash, material_hash, provider_safe, require_ref
 from smacx_world_store import WorldStore
 
@@ -1490,7 +1490,7 @@ class AttentionService:
                 "expired_watches": watches}
 
     def acquire_sovereign(self, episode_id: str, episode_mode: str,
-                          *, ttl_seconds: int = 900) -> str:
+                          *, ttl_seconds: int = 900, run_id: str = "", session_id: str = "") -> str:
         if episode_mode not in {"gameplay", "communication", "recovery"}:
             raise AttentionError("invalid_episode_mode")
         token = secrets.token_urlsafe(32)
@@ -1498,6 +1498,8 @@ class AttentionService:
         now = time.time()
         key = self._key(self.timeline_id)
         with self.store.transaction() as connection:
+            if run_id:
+                self._require_sovereign_owner(connection, run_id, session_id)
             current = connection.execute(
                 "SELECT episode_id,episode_mode,status,expires_unix FROM sovereign_leases WHERE match_id=? AND agent_id=? "
                 "AND perspective_id=? AND timeline_id=?", key,
@@ -1525,6 +1527,37 @@ class AttentionService:
                  now + min(max(ttl_seconds, 30), 3600)),
             )
         return token
+
+    def _require_sovereign_owner(self, connection, run_id: str, session_id: str) -> None:
+        try:
+            self.store.require_session(self.scope, session_id, connection=connection)
+        except StoreError as exc:
+            raise AttentionError("sovereign_episode_owner_changed") from exc
+        run = connection.execute(
+            "SELECT 1 FROM harness_runs WHERE run_id=? AND match_id=? AND agent_id=? "
+            "AND perspective_id=? AND native_session_id=? AND desired_status='running' "
+            "AND status IN ('starting','running')", (run_id, self.scope.match_id,
+                self.scope.agent_id, self.scope.perspective_id, session_id),
+        ).fetchone()
+        if not run:
+            raise AttentionError("sovereign_episode_owner_not_running")
+
+    def renew_sovereign(self, token: str, episode_id: str, *, run_id: str,
+                        session_id: str, ttl_seconds: int = 900) -> None:
+        """Renew only a still-live owner. Renewal is not semantic progress."""
+        now = time.time()
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        with self.store.transaction() as connection:
+            self._require_sovereign_owner(connection, run_id, session_id)
+            changed = connection.execute(
+                "UPDATE sovereign_leases SET expires_unix=? WHERE match_id=? AND agent_id=? "
+                "AND perspective_id=? AND timeline_id=? AND episode_id=? AND lease_token_hash=? "
+                "AND status='active' AND expires_unix>?",
+                (now + min(max(ttl_seconds, 30), 3600), *self._key(self.timeline_id),
+                 episode_id, digest, now),
+            ).rowcount
+            if changed != 1:
+                raise AttentionError("sovereign_episode_authority_lost")
 
     def sovereign_state(self, *, include_inactive: bool = False) -> dict[str, Any] | None:
         """Return writer metadata without its token; inactive identity detects restart reuse."""

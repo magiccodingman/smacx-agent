@@ -1,0 +1,9 @@
+{
+  "scope": "Two saved AI-5 requests, reasoning-only reduction. No tools executed. Historical versus fresh generation is not a controlled speed comparison.",
+  "requests": [
+    {"request_id": "d59b445938a84cf4a6a8b35c3c1738cf", "historical_provider_input": 66341, "reasoning_aware_tokenizer_before": 66358, "uncorrected_tokenizer": 49018, "latest_only_input": 51959, "input_reduction_percent": 21.70, "historical_output": 5080, "fresh_output": 2666, "fresh_reasoning": 2101, "historical_elapsed_seconds": 139.01, "fresh_elapsed_seconds": 114.00},
+    {"request_id": "25198c40eef149b3bd21dabc8105ba1f", "historical_provider_input": 63150, "reasoning_aware_tokenizer_before": 63167, "uncorrected_tokenizer": 52551, "latest_only_input": 54620, "input_reduction_percent": 13.53, "historical_output": 6015, "fresh_output": 3399, "fresh_reasoning": 2377, "historical_elapsed_seconds": 163.52, "fresh_elapsed_seconds": 86.57}
+  ],
+  "checks": {"ordinary_content_and_tool_protocol_unchanged": true, "fresh_provider_input_matches_corrected_tokenizer": true, "returned_tool_names_required_arguments_and_action_enums_valid": true, "supplied_guards_present_in_captured_evidence": true, "tools_executed": false, "strategic_equivalence_proven": false},
+  "quality_review": "Both retained expansion/scouting/terraforming intent and issued memory writes. The second preserved rival location uncertainty and distinguished the uncollected pod from confirmed placement. Reconsideration remained. The first still deferred the Former; its saved request predates the base-tile advisory. The second chose relationship bookkeeping instead of the historical claim/attention batch. End-to-end acknowledgement and strategic outcomes require live review."
+}

@@ -382,6 +382,18 @@ class PerspectiveProjector:
             fields["owner_ref"] = _evidence(owner, current=True, owned=owned, turn=turn,
                                              world_revision=revision_hint,
                                              provenance_ref=provenance)
+            # Keep the last material access event in the base projection; attention
+            # acknowledgement does not erase queryable history. Replay uses the same prior.
+            if owned:
+                from smacx_settlement import access_changes
+                provisional = WorldObject(ref, "base", fields, at).as_dict(provider_safe=False)
+                previous = self._prior_objects.get(ref, {})
+                changes = access_changes([previous] if previous else [], [provisional], turn)
+                remembered = previous.get("fields", {}).get("last_resource_access_change", {}).get("value")
+                if changes or remembered:
+                    fields["last_resource_access_change"] = _evidence(
+                        changes[0] if changes else remembered, current=True, owned=True, turn=turn,
+                        world_revision=revision_hint, provenance_ref=provenance)
             objects.append(WorldObject(ref, "base", fields, at,
                                        metadata={"native_id": base.get("id")} if owned else {}))
         # Native vehicle rows compact after destruction.  The feed marks that
@@ -868,11 +880,13 @@ class SemanticLodProjector:
                           | (set(mass.location_refs) & pinned)
                           | ({mass.region_ref} & pinned))
         ref_key = "landmass_ref" if kind == "land" else "ocean_mass_ref"
+        from smacx_operational_context import geographic_completeness
         return {
             ref_key: mass.region_ref,
             "lineage_ref": mass.lineage_ref, "version": mass.version,
             "anchor_location_ref": mass.anchor_location_ref,
             "known_location_count": len(mass.location_refs),
+            "geographic_completeness": geographic_completeness(topology, mass.location_refs),
             "current_known_location_count": sum(
                 int(topology.by_ref[ref].current) for ref in mass.location_refs
             ),
@@ -1249,7 +1263,7 @@ class SemanticLodProjector:
         if estimate_tokens(anchor) > content_cap:
             anchor["physical_masses"] = [{key: value for key, value in item.items()
                                           if key in {"landmass_ref", "ocean_mass_ref", "version",
-                                                     "known_location_count", "lod_level",
+                                                     "known_location_count", "geographic_completeness", "lod_level",
                                                      "promoted_by_refs", "owned_base_count", "owned_base_refs",
                                                      "current_foreign_base_count", "owned_land_force_count",
                                                      "current_visible_land_contact_counts_by_faction"}}

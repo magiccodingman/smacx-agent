@@ -14,6 +14,7 @@ import time
 from typing import Any, Mapping, Sequence
 import re
 import uuid
+from functools import wraps
 
 from smacx_game_settings import game_settings_environment, normalize_game_settings
 from smacx_journal import CampaignJournal, JournalError
@@ -830,6 +831,20 @@ def _resolve_memory_faction_refs(store, scope, record, observed_revision):
     return record, resolved
 
 
+_MEMORY_WRITE_LOCK = threading.RLock()
+
+
+def _serialize_memory_write(function):
+    @wraps(function)
+    def guarded(*args, **kwargs):
+        # A managed perspective has one sovereign writer. Serialize concurrent
+        # MCP dispatches through compare, projection and canonical append.
+        with _MEMORY_WRITE_LOCK:
+            return function(*args, **kwargs)
+    return guarded
+
+
+@_serialize_memory_write
 def write_platform_memory(
     action: str,
     match_id: str,
@@ -853,6 +868,38 @@ def write_platform_memory(
         store = _store()
         turn = snapshot.get("turn")
         year = snapshot.get("year")
+        from smacx_memory_contract import validate_record, contract
+        errors = validate_record(action, record, int(turn))
+        if errors:
+            first = errors[0]
+            field = first["field"]
+            code = first["code"]
+            if field == "record_json.status":
+                code = f"invalid_{action}_status"
+            elif field == "record_json.topic":
+                code = f"invalid_{action}_topic"
+            elif field == "record_json.confidence":
+                code = "invalid_confidence"
+            elif action == "plan" and any(field.startswith("record_json." + name + "[")
+                    for name in ("dependencies", "target_refs", "linked_commitments")):
+                code = "invalid_plan_reference"
+            elif action in {"goal", "plan"} and field == "record_json." + ("trigger" if action == "goal" else "timing"):
+                code = "invalid_intent_metadata"
+                first = {**first, "example": {field.split(".")[1]: {"intent_horizon": "persistent_goal"}}}
+            elif action == "relationship" and field.split(".")[-1] in {
+                    "affinity", "trust", "respect", "threat", "grievance", "obligation"}:
+                code = "invalid_relationship_metric"
+                first = {**first, "ranges": {name: [spec["minimum"], spec["maximum"]]
+                    for name, spec in contract(action)["input"]["properties"].items()
+                    if spec.get("type") == "integer"}}
+            return {"ok": False, "error": code, "memory_write_committed": False,
+                "validation": {**first, "errors": errors, "error_limit": 32,
+                    "possibly_more_errors": len(errors) == 32,
+                    "message": first["message"] + " Preserve other record fields and valid participants; use smac_memory editable_record before revising."},
+                "update_semantics": {k: v for k, v in contract(action).items() if k != "input"} if action in {
+                    "claim", "belief", "relationship", "commitment", "goal", "plan", "summary"} else {},
+                "persistence": {"stage": "not_started", "journal_committed": False,
+                    "authority": "campaign_journal", "retry_policy": "Nothing written. Correct all listed fields and explicitly retry with a fresh guard; no automatic retry or merge."}}
         record, actor_references = _resolve_memory_faction_refs(store, scope, record, observed_revision)
         if action in {"goal", "plan"}:
             from smacx_intent import validate_intent
@@ -911,6 +958,22 @@ def write_platform_memory(
             value for value in references if isinstance(value, str) and value.startswith("journal-"))]
         for event in canonical:
             store.project_journal_evidence(scope, event)
+        # Compare only against the active canonical timeline, after all observation,
+        # schema and journal-reference guards. Never trust a stale SQLite projection.
+        from smacx_memory_contract import KEYS, COLLECTIONS, editable_record
+        collection = COLLECTIONS[action]
+        record_key = record.get(KEYS[action])
+        prior = _journal().replay(scope, sections=(collection,)).get(collection, {}).get(record_key)
+        if prior and editable_record(action, dict(record)) == editable_record(action, prior.get("input") or prior["record"]):
+            return {
+                "ok": True, "identity": _platform_scope_identity(scope, session_id),
+                "action": action, "record": prior["record"], "changed": False,
+                "actor_references": actor_references, "cognition_hygiene": hygiene,
+                "observed_revision": observed_revision, "observed_turn": turn,
+                "observed_year": year, "journal_event_id": prior.get("journal_event_id"),
+                "persistence": {"stage": "already_persisted", "authority": "campaign_journal",
+                    "journal_committed": True, "new_event_committed": False},
+            }
         source_event_id = str(record.get("source_event_id") or "") or None
         if action == "claim":
             status = str(record.get("status") or "unverified")
@@ -1024,22 +1087,11 @@ def write_platform_memory(
             )
         elif action == "plan":
             status = str(record.get("status") or "active")
-            sequence_fields = (
-                "target_refs", "participants", "dependencies", "contingencies",
-                "linked_commitments", "contradictory_evidence",
-            )
-            for field in sequence_fields:
-                if not isinstance(record.get(field, []), list):
-                    raise StoreError(f"invalid_plan_{field}")
-            for field in ("timing", "last_confirmation"):
-                if not isinstance(record.get(field, {}), Mapping):
-                    raise StoreError(f"invalid_plan_{field}")
             stored = store.put_plan(
                 scope, str(record.get("plan_key") or ""),
                 str(record.get("title") or ""), str(record.get("objective") or ""),
                 status=status, target_refs=[str(value) for value in record.get("target_refs", [])],
-                participants=[dict(value) for value in record.get("participants", [])
-                              if isinstance(value, Mapping)],
+                participants=[dict(value) for value in record.get("participants", [])],
                 timing=dict(record.get("timing", {})),
                 dependencies=[str(value) for value in record.get("dependencies", [])],
                 intended_role=str(record.get("intended_role") or ""),
@@ -1079,6 +1131,7 @@ def write_platform_memory(
             "ok": True,
             "identity": _platform_scope_identity(scope, session_id),
             "action": action,
+            "changed": True,
             "record": stored,
             "observed_revision": observed_revision,
             "observed_turn": turn,
@@ -1087,10 +1140,14 @@ def write_platform_memory(
             "cognition_hygiene": hygiene,
             "actor_references": actor_references,
             "persistence": {"stage": write_stage, "authority": "campaign_journal",
+                            "journal_committed": True,
                             "next_context_source": "fresh_journal_working_state"},
         }
     except BridgeUnavailable:
-        return {"ok": False, "error": "game_not_connected"}
+        return {"ok": False, "error": "game_not_connected", "persistence": {
+            "stage": write_stage, "authority": "campaign_journal",
+            "journal_committed": False if write_stage == "not_started" else None,
+            "retry_policy": "Inspect current canonical state before explicitly retrying."}}
     except (StoreError, JournalError, TypeError, ValueError) as exc:
         guidance = {}
         if action in MEMORY_STATUS_VALUES and str(exc) == f"invalid_{action}_status":
@@ -1158,6 +1215,7 @@ def write_platform_memory(
             }
             retry_policy = "No memory write started. Inspect fresh state before explicitly retrying; no automatic rebase or retry occurred."
         return {"ok": False, "error": str(exc), **guidance, "persistence": {"stage": write_stage,
+            "journal_committed": True if write_stage in {"journal_committed", "runtime_projection_built"} else (False if write_stage == "not_started" else None),
             "authority": "campaign_journal", "retry_policy": retry_policy}}
 
 
@@ -1265,6 +1323,8 @@ def read_platform_memory(
     acknowledge: bool = False,
     limit: int = 100,
     cursor: str = "",
+    record_kind: str = "",
+    key: str = "",
 ) -> dict[str, Any]:
     """Read one allowlisted, perspective-scoped durable-memory view."""
     try:
@@ -1305,6 +1365,30 @@ def read_platform_memory(
                 return [provider_safe(item, choice_parameters=choice_parameters) for item in value]
             return value
 
+        if action in {"contract", "editable_record"}:
+            from smacx_memory_contract import contract, COLLECTIONS, editable_record
+            try:
+                rules = contract(record_kind)
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc)}
+            if action == "contract":
+                return {"ok": True, "identity": identity, "contract": rules}
+            if not key or len(key) > 160:
+                return {"ok": False, "error": "memory_record_key_required", "identity_field": rules["identity_field"]}
+            collection = COLLECTIONS[record_kind]
+            entry = journal.replay(scope, sections=(collection,)).get(collection, {}).get(key)
+            if not entry:
+                return {"ok": False, "error": "memory_record_not_found", "identity_field": rules["identity_field"]}
+            editable = editable_record(record_kind, provider_safe(entry["record"]))
+            encoded_editable = json.dumps(editable, ensure_ascii=False, separators=(",", ":"))
+            if len(encoded_editable) > rules["maximum_record_characters"]:
+                return {"ok": False, "error": "legacy_memory_record_exceeds_edit_budget",
+                    "message": "The historical record remains intact. No truncated replacement template is supplied; inspect its campaign evidence before explicitly restructuring it.",
+                    "journal_event_id": entry.get("journal_event_id")}
+            return {"ok": True, "identity": identity, "record_kind": record_kind,
+                "key": key, "record_json": encoded_editable,
+                "journal_event_id": entry.get("journal_event_id"), "authority": "campaign_journal",
+                "update_semantics": {k: v for k, v in rules.items() if k != "input"}}
         if action == "working_set":
             memory = _journal_working_state(scope)
             journal.project_state(scope, memory)

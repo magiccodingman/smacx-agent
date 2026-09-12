@@ -329,6 +329,26 @@ def install_hermes_capture(agent_class, writer: DiagnosticWriter) -> None:
     agent_class._smacx_diagnostic_capture = True
 
 
+def provider_chunk_has_content(value):
+    """Only generated content earns liveness; transport/usage markers do not."""
+    if not isinstance(value, dict) or not isinstance(value.get("choices"), list):
+        return False
+    for choice in value["choices"]:
+        delta = choice.get("delta") if isinstance(choice, dict) else None
+        if not isinstance(delta, dict):
+            continue
+        if any(isinstance(delta.get(key), str) and delta[key]
+               for key in ("content", "reasoning", "reasoning_content")):
+            return True
+        calls = delta.get("tool_calls")
+        for call in calls if isinstance(calls, list) else []:
+            function = call.get("function") if isinstance(call, dict) else None
+            if isinstance(function, dict) and any(isinstance(function.get(key), str)
+                    and function[key] for key in ("name", "arguments")):
+                return True
+    return False
+
+
 _PROVIDER_PHASE_LOCK = threading.Lock()
 
 
@@ -340,7 +360,7 @@ def record_provider_phase(request_id: str, phase: str, started_unix: float) -> N
             or os.environ.get("SMACX_STRICT_SYSTEM_PROMPT") != "1" \
             or os.environ.get("SMACX_SPECIALIST_STRICT_PROMPT") == "1":
         return
-    if phase not in {"submitted", "headers", "completed", "failed", "closed_incomplete"}:
+    if phase not in {"submitted", "headers", "streaming", "completed", "failed", "closed_incomplete"}:
         return
     try:
         with _PROVIDER_PHASE_LOCK:
@@ -349,8 +369,17 @@ def record_provider_phase(request_id: str, phase: str, started_unix: float) -> N
                 prior = json.loads(path.read_text())
                 if prior.get("run_id") != run_id or prior.get("request_id") != request_id:
                     return  # An older completion must not overwrite a newer request.
+            if phase == "streaming" and prior.get("phase") in {"completed", "failed", "closed_incomplete"}:
+                return
+            now = time.time()
+            if phase == "streaming" and now - float(prior.get("last_content_unix", 0)) < 1:
+                return  # Bound disk writes independently of token rate.
             value = {"run_id": run_id, "request_id": request_id, "phase": phase,
                      "started_unix": started_unix, "observed_unix": time.time()}
+            if phase == "streaming":
+                value["last_content_unix"] = now
+            elif phase != "submitted" and "last_content_unix" in prior:
+                value["last_content_unix"] = prior["last_content_unix"]
             path.parent.mkdir(parents=True, exist_ok=True)
             temporary = path.with_suffix(f".{os.getpid()}.tmp")
             temporary.write_text(json.dumps(value))
@@ -458,6 +487,7 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
                     self.digest = hashlib.sha256()
                     self.activity = []
                     self.activity_bytes = 0
+                    self.last_content = time.monotonic() - 1
                     self.last_activity = time.monotonic() - 1
                 def flush_activity(self):
                     if self.activity:
@@ -470,6 +500,9 @@ def install_httpx_capture(client_class, writer: DiagnosticWriter) -> None:
                     if data == b"[DONE]": self.done = True; return
                     try: value = json.loads(data)
                     except ValueError: self.omitted = True; return
+                    if provider_chunk_has_content(value) and time.monotonic() - self.last_content >= 1:
+                        record_provider_phase(request_id, "streaming", started_unix)
+                        self.last_content = time.monotonic()
                     _remember_provider_calls(value, correlation)
                     self.activity.append(value)
                     self.activity_bytes += len(data)

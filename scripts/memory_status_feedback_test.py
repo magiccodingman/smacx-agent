@@ -99,6 +99,20 @@ with tempfile.TemporaryDirectory() as tmp:
         corrected=c.write_platform_memory('claim',scope.match_id,'session-delivery','r4',
             {'topic':'confidence-scale','content':'Test','confidence':0.8})
         assert corrected['ok'],corrected
+        bound_plan = {**records['plan'], 'plan_key': 'specific-plan-error',
+                      'participants': [{'ref': 'own-unit-3', 'intended_role': 'terraformer'}]}
+        for field in ('dependencies', 'target_refs', 'linked_commitments'):
+            before = c._journal_working_state(scope)
+            invalid = c.write_platform_memory('plan', scope.match_id, 'session-delivery', 'r4',
+                {**bound_plan, field: ['A prose condition is not a reference.']})
+            assert invalid['error'] == 'invalid_plan_reference', invalid
+            assert invalid['validation']['field'] == f'record_json.{field}[0]', invalid
+            assert invalid['persistence']['stage'] == 'not_started'
+            assert c._journal_working_state(scope) == before
+        repaired = c.write_platform_memory('plan', scope.match_id, 'session-delivery', 'r4',
+            {**bound_plan, 'contingencies': ['Move to non-rocky soil before farming.']})
+        assert repaired['ok'], repaired
+        assert repaired['record']['participants'] == bound_plan['participants'], repaired
         record=records['plan']
         active=c.write_platform_memory('plan',scope.match_id,'session-delivery','r4',
             {**record,'status':'active'})
@@ -112,6 +126,11 @@ with tempfile.TemporaryDirectory() as tmp:
         assert retired['record']['supersedes_plan_id']==active['record']['plan_id']
         assert retired['persistence']['stage']=='runtime_projection_built'
         import smacx_mcp as m
+        with patch.object(m, '_bound_scope_identity', return_value=(scope.match_id, 'session-delivery', scope.agent_id, scope.perspective_id)):
+            delivered = m.smac_memory_update('plan', scope.match_id, 'session-delivery', 'r4',
+                json.dumps({**bound_plan, 'dependencies': ['Move to soil before farming.']}))
+            assert delivered['validation']['field'] == 'record_json.dependencies[0]', delivered
+            assert delivered['persistence']['stage'] == 'not_started'
         import asyncio
         listed=asyncio.run(m.mcp.list_tools())
         desc=next(tool.description for tool in listed if tool.name=='smac_memory_update')

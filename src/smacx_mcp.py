@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import threading
 import time
 import traceback
@@ -101,9 +102,10 @@ MATCH_BRIEFING_RESUME_NOTICES: set[tuple[str, str]] = set()
 MATCH_BRIEFING_LOCK = threading.Lock()
 DECISION_CACHE: dict[str, dict] = {}
 DECISION_LOCK = threading.Lock()
-# A measured provider response took 181.4 seconds. Allow bounded reasoning
-# latency; execution still requires the original native revision and guards.
-DECISION_TTL_SECONDS = 300.0
+# Handles must survive one allowed provider generation plus dispatch overhead.
+# Native revision/session/legality and one-use checks still gate every execution.
+from smacx_provider_watchdog import DECISION_HANDLE_SECONDS
+DECISION_TTL_SECONDS = float(DECISION_HANDLE_SECONDS)
 CHOICE_PREPARATIONS = ChoicePreparations(ttl=DECISION_TTL_SECONDS)
 AIRDROP_RECEIPT_CACHE: dict[tuple[str, ...], dict] = {}
 AIRDROP_RECEIPT_LOCK = threading.Lock()
@@ -233,6 +235,7 @@ def _sovereign_gameplay_gate(operation: str) -> dict | None:
     if not active:
         return {"ok": False, "error": {"code": "sovereign_episode_not_active",
                 "message": f"{operation} requires the active serialized gameplay episode."},
+                "episode_restart_required": True,
                 "gameplay_mutations_blocked": True}
     if active.get("episode_mode") != "gameplay":
         return {"ok": False, "error": {"code": "communication_episode_read_only",
@@ -244,6 +247,28 @@ def _sovereign_gameplay_gate(operation: str) -> dict | None:
         return {**fence, "gameplay_mutations_blocked": True,
                 "native_action_executed": False, "execution_status": "not_dispatched"}
     return None
+
+
+def _sovereign_memory_gate() -> dict | None:
+    """Communication may maintain memory, but a dead episode may not."""
+    rejected = _sovereign_gameplay_gate("Memory mutation")
+    if rejected and (rejected.get("error") or {}).get("code") in {
+            "sovereign_episode_not_active", "sovereign_authority_unavailable"}:
+        return rejected
+    return None
+
+
+def _renew_runtime_authority(episode_id: str, token: str, run_id: str, session_id: str) -> None:
+    with RUNTIME_EPISODE_LOCK:
+        state = RUNTIME_EPISODE_TURNS.get(episode_id, {})
+        if not token or not secrets.compare_digest(RUNTIME_EPISODE_TOKENS.get(episode_id, ""), token):
+            raise AttentionError("sovereign_episode_authority_lost")
+        if state.get("run_id") != run_id or state.get("session_id") != session_id:
+            raise AttentionError("sovereign_episode_owner_changed")
+        _, attention = _runtime_services()
+        if state.get("timeline_id") != attention.timeline_id:
+            raise AttentionError("sovereign_episode_timeline_changed")
+        attention.renew_sovereign(token, episode_id, run_id=run_id, session_id=session_id)
 
 
 def _remember_episode_boundary(boundary: dict, active: dict | None) -> None:
@@ -373,6 +398,8 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
         query = parse_qs(parts.query)
         episode_id = query.get("episode_id", [""])[0]
         episode_mode = query.get("episode_mode", ["gameplay"])[0]
+        run_id = query.get("run_id", [""])[0]
+        owner_session_id = query.get("session_id", [""])[0]
         try:
             context_length = int(query.get("context_length", ["65536"])[0])
             if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{7,159}", episode_id):
@@ -399,13 +426,24 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                     initial_turn = _turn_number(initial.get("turn"))
                     if episode_mode == "gameplay" and initial_turn is None:
                         raise RuntimeError("sovereign_episode_turn_unavailable")
-                    RUNTIME_EPISODE_TURNS[episode_id] = {"initial_turn": initial_turn}
+                    if owner_session_id and owner_session_id != session_id:
+                        raise RuntimeError("sovereign_episode_owner_changed")
+                    RUNTIME_EPISODE_TURNS[episode_id] = {"initial_turn": initial_turn,
+                        "run_id": run_id, "session_id": owner_session_id,
+                        "timeline_id": attention.timeline_id}
                     RUNTIME_EPISODE_TOKENS[episode_id] = attention.acquire_sovereign(
-                        episode_id, episode_mode,
+                        episode_id, episode_mode, run_id=run_id, session_id=owner_session_id,
                     )
+                token = RUNTIME_EPISODE_TOKENS[episode_id]
+                if run_id:
+                    _renew_runtime_authority(episode_id, token, run_id, owner_session_id)
+                elif not attention.sovereign_state():
+                    raise AttentionError("sovereign_episode_authority_lost")
+            with RUNTIME_EPISODE_LOCK:
+                boundary = RUNTIME_EPISODE_TURNS.get(episode_id, {}).get("boundary")
             payload = assembler.build(
                 episode_id=episode_id, episode_mode=episode_mode,
-                context_length=context_length,
+                context_length=context_length, episode_boundary=boundary,
             )
             telemetry_dimensions = {"episode_mode": episode_mode}
             for query_name, metric_name in (
@@ -430,7 +468,10 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                               actor="runtime-context-builder", correlation={"episode_id": episode_id,
                                   "runtime_context_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True,
                                       separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()})
-            self._json(200, {"ok": True, "runtime_context": payload})
+            # Private transport receipt: never included in runtime_context or diagnostics.
+            receipt = {"episode_id": episode_id, "token": token} if run_id else None
+            self._json(200, {"ok": True, "runtime_context": payload,
+                             "authority_heartbeat": receipt})
         except Exception as exc:
             diagnostic_record("runtime_context_failed", {"error": str(exc),
                 "exception_type": type(exc).__name__,
@@ -446,12 +487,17 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
             self._json(401, {"ok": False, "error": "unauthorized"})
             return
         parts = urlsplit(self.path)
-        if parts.path not in {"/runtime-context/responded", "/runtime-context/episode-ended"}:
+        if parts.path not in {"/runtime-context/responded", "/runtime-context/episode-ended", "/runtime-context/heartbeat"}:
             self._json(404, {"ok": False, "error": "not_found"})
             return
         try:
             length = min(max(int(self.headers.get("Content-Length", "0")), 0), 4096)
             body = json.loads(self.rfile.read(length) or b"{}")
+            if parts.path == "/runtime-context/heartbeat":
+                _renew_runtime_authority(str(body.get("episode_id") or ""), str(body.get("token") or ""),
+                    str(body.get("run_id") or ""), str(body.get("session_id") or ""))
+                self._json(200, {"ok": True})
+                return
             if parts.path == "/runtime-context/episode-ended":
                 episode_id = str(body.get("episode_id") or "")
                 with RUNTIME_EPISODE_LOCK:
@@ -1076,6 +1122,11 @@ def _semanticize_choice(value: Any, context: Mapping[str, Any] | None) -> Any:
                 result[public_key] = ref
             continue
         result[str(key)] = _semanticize_choice(item, context)
+    if isinstance(result.get('settlement_context'), dict):
+        settlement = result['settlement_context']
+        settlement['meaning'] = ('Legal founding is not an economic assessment. Discover nearby alternatives with '
+            'smac_world mode=settlement using this colony or location as origin_ref; compare an exact site if preferred. '
+            'Strategic outposts may deliberately have weak economics.')
     return result
 
 
@@ -1158,6 +1209,12 @@ def _unit_action_catalog_context(catalog: Mapping[str, Any],
     }
     if isinstance(catalog.get("at"), Mapping):
         result["at"] = _semanticize_choice(catalog["at"], context)
+    if any(isinstance(row, Mapping) and row.get("kind") == "tile_target_query"
+           and row.get("legal") is None for row in catalog.get("choices", ())):
+        result["destination_query"] = {
+            "tool": "smac_choices", "kind": "unit_actions",
+            "supply": ["own_unit_ref", "target_location_ref"],
+            "meaning": "For an intended known destination, query its persistent route choices. Order acceptance does not prove arrival; inspect interruption and later position. Individual moves remain available."}
     result["catalog_scope"] = {
         "exhaustive_for": "currently executable actions for this owned unit at this native revision",
         "not_evidence_of": [
@@ -1286,7 +1343,8 @@ def _public_execution_receipt(receipt: Mapping[str, Any]) -> dict:
             origin, target, observed = (value.get(key) for key in
                 ("origin_location_ref", "target_location_ref", "observed_location_ref"))
             observation = {"scope": "Native resolution receipt, not a guarantee of current unit state.",
-                           "meaning": "Completed means the native attempt resolved, not necessarily arrival. Refresh the decision; an unreported movement failure reason remains unknown."}
+                           "observation_stage": "native_attempt_resolution",
+                           "meaning": "Completed means the attempt resolved, not necessarily arrival. This sample can precede the later world observation; a different later position does not contradict this earlier sample. Unreported failure cause remains unknown."}
             if isinstance(origin, str) and isinstance(observed, str):
                 observation["reported_position_changed"] = observed != origin
             if isinstance(target, str) and isinstance(observed, str):
@@ -1605,6 +1663,17 @@ def smac_match_briefing(
     }
 
 
+def _pre_dispatch_development_rejection(resolution: object) -> bool:
+    value = str(resolution or "")
+    return value == "state_changed_before_execution" \
+        or value.endswith("_before_execution") \
+        or value in {
+            "network_unit_lock_rejected", "network_unit_lock_remapped",
+            "development_unit_identity_changed_after_lock",
+            "development_choice_changed_after_lock",
+        }
+
+
 def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
     """Turn a queued native action into a definitive MCP result when possible."""
     action_id = result.get("action_id")
@@ -1627,12 +1696,23 @@ def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
             "next": "Wait, observe last_deferred_action, and do not queue another command meanwhile.",
         }
     if action.get("status") == "rejected":
+        resolution = str(action.get("resolution") or "")
+        command = str(result.get("command") or action.get("command") or "action")
+        pre_dispatch = _pre_dispatch_development_rejection(resolution)
         message = (
             "The native end-turn command returned without accepting a turn transition. "
             "The turn has not advanced and movement has not been renewed. "
             "Obtain a fresh decision; do not keep waiting on this rejected receipt."
-            if action.get("resolution") == "native_turn_transition_not_accepted"
-            else "The queued action did not complete. Read its execution receipt; a native rejection does not establish why movement failed. Obtain a fresh decision before another attempt."
+            if resolution == "native_turn_transition_not_accepted"
+            else (
+                f"The guarded {command} choice was rejected before native dispatch "
+                f"({resolution}). Obtain a fresh decision and select another returned choice; "
+                "do not retry the same choice until meaningful native state changes."
+                if pre_dispatch else
+                f"The queued {command} action did not complete. Read its execution receipt; "
+                "the rejection does not prove a broader rule or capability failure. Obtain "
+                "a fresh decision before another attempt."
+            )
         )
         return {
             "ok": False,
@@ -2138,6 +2218,12 @@ def _decision_advisories(choices: object, *, semantic_context: Mapping[str, Any]
         item = _semanticize_choice(
             {key: raw[key] for key in allowed if key in raw}, semantic_context,
         )
+        if item.get("reason") == "current_tile_has_base" and item.get("available") is False:
+            item["meaning"] = (
+                "This restriction applies to the current base tile, not the entire turn. "
+                "Relocation may permit founding or terraforming; inspect the destination's "
+                "current guarded choices. Movement, terrain and other legality checks still apply."
+            )
         if item:
             advisories.append(item)
         if len(advisories) >= 8:
@@ -2315,6 +2401,42 @@ def _cache_decision_choices(identity: dict, choices: object, *,
              "target_base_ref", "target_unit_ref")
             if isinstance(semantic_bound.get(key), str)
         }
+    state_fingerprint = hashlib.sha256(json.dumps({
+        "turn": turn, "year": year, "phase": phase,
+        "focus": focus or {}, "choices": compact,
+        "information": (_decision_information(raw_items, semantic_context)
+                        if catalog_information is None else catalog_information),
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    choice_recovery = None
+    progress_key = (str(identity.get("match_id") or ""),
+                    str(identity.get("session_id") or ""))
+    with ACTION_PROGRESS_LOCK:
+        previous = dict(ACTION_PROGRESS.get(progress_key, {}))
+    if previous.get("same_state_retry_blocked") \
+            and previous.get("state_fingerprint") == state_fingerprint:
+        rejected_key = previous.get("semantic_key")
+        withheld = [choice_id for choice_id, bound in private.items()
+                    if _choice_semantic_key(bound) == rejected_key]
+        if withheld:
+            withheld_set = set(withheld)
+            public = [item for item in public
+                      if item.get("choice_id") not in withheld_set]
+            for choice_id in withheld:
+                private.pop(choice_id, None)
+                labels.pop(choice_id, None)
+                receipt_subjects.pop(choice_id, None)
+            choice_recovery = {
+                "status": "same_state_native_rejection_withheld",
+                "withheld_choice_count": len(withheld),
+                "rejected_action": previous.get("selected_action"),
+                "execution_resolution": previous.get("execution_resolution"),
+                "retry_same_choice": False,
+                "meaning": (
+                    "The exact native choice was rejected before execution and is withheld "
+                    "while the meaningful unit state remains unchanged. Select another returned "
+                    "choice; the action may reappear after real native-state progress."
+                ),
+            }
     with DECISION_LOCK:
         expired = [key for key, value in DECISION_CACHE.items()
                    if now - float(value.get("created_monotonic", 0)) > DECISION_TTL_SECONDS]
@@ -2334,18 +2456,14 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             "turn": turn,
             "year": year,
             "phase": phase,
-            "state_fingerprint": hashlib.sha256(json.dumps({
-                "turn": turn, "year": year, "phase": phase,
-                "focus": focus or {}, "choices": compact,
-                "information": (_decision_information(raw_items, semantic_context)
-                                if catalog_information is None else catalog_information),
-            }, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            "state_fingerprint": state_fingerprint,
             "choices": private,
             "choice_labels": labels,
             "receipt_subjects": receipt_subjects,
             "advisories": advisories,
             "information": (_decision_information(raw_items, semantic_context)
                             if catalog_information is None else catalog_information),
+            "choice_recovery": choice_recovery,
             "consumed": False,
         }
     return decision_id, public
@@ -2418,8 +2536,11 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
 
 @mcp.tool(
     description=(
-        "Inspect the fair-play world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
+        "Inspect the semantic world using returned opaque references. For force composition use mode=forces detail=roster; deep retrieves full individual evidence. Modes cover geography, "
         "mechanics, routes, forces, bases, intelligence and changes. Detail levels have fixed ceilings. "
+        "For settlement discovery use mode=settlement with origin_ref=base, colony, location or region and radius (default3). "
+        "Optional scenario_json has purpose:expansion|growth|production|coastal_access|strategic_outpost, domain:land|sea|both, "
+        "max_travel_turns (requires colony origin). Candidates are advisory; you can choose any location. "
         "Before consequential settlement, mode=compare with nominated location subject_refs returns current native founding legality, known radius overlap, yields, distance and logistics evidence; compare alternatives when available because legal does not mean strategically good. "
         "Compare frontier subject_refs for exploration access; area on a mass gives shape evidence. Compare with a unit origin gives connectors; deep adds bounded two-tile passages. Unknown terrain is never routed through. Counterfactual mode takes scenario_json: "
         "site_economy with populations:[1,2,3] and up to four subject locations; "
@@ -2432,7 +2553,7 @@ def _graphiti_recall(identity: dict, query: str, *, limit: int = 6) -> dict:
 def smac_world(
     mode: Literal[
         "overview", "area", "relation", "route", "reachability", "compare",
-        "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual",
+        "base", "forces", "logistics", "intel", "changes", "global", "render", "counterfactual", "settlement",
     ],
     subject_refs: list[str] | None = None,
     origin_ref: str = "",
@@ -2444,7 +2565,12 @@ def smac_world(
     continuation: str = "",
     scenario_json: str = "",
 ) -> dict:
-    """Provider-facing facade; internal calculators remain independently bounded."""
+    """Query semantic world. settlement discovers sites near origin_ref (base/unit/location)
+    or in a region; radius bounds nearby search. Optional scenario_json:
+    {"purpose":"expansion|growth|production|coastal_access|strategic_outpost",
+     "domain":"land|sea|both","max_travel_turns":3}. Travel limit requires a colony
+    origin. Candidates are advisory; compare still evaluates exact nominated sites.
+    """
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
     if not match_id or not session_id:
         return {"ok": False, "error": "managed_world_identity_unavailable"}
@@ -2555,7 +2681,7 @@ def smac_world(
                             AIRDROP_RECEIPT_CACHE[cache_key] = candidate
                             while len(AIRDROP_RECEIPT_CACHE) > 64:
                                 AIRDROP_RECEIPT_CACHE.pop(next(iter(AIRDROP_RECEIPT_CACHE)))
-        site_economy = bool(scenario and scenario["kind"] == "site_economy")
+        site_economy = bool(scenario and scenario["kind"] == "site_economy") or bool(mode == "compare" and not origin_ref and not target_ref and 0 < len(subject_refs or []) <= 4)
         if (mode == "compare" and not origin_ref and not target_ref or site_economy) and subject_refs:
             identity, projection = world._projection()
             action_revision = str(projection.get("action_revision") or "")
@@ -2580,7 +2706,7 @@ def smac_world(
                     received = _call(
                         "semantic_base_site_receipts",
                         target_tile_ids=sorted(set(target_ids)),
-                        include_economy=site_economy,
+                        include_economy=site_economy, terrain_potential=True,
                     )
                     if received.get("ok") is True \
                             and str(received.get("action_revision") or "") == action_revision:
@@ -2599,6 +2725,70 @@ def smac_world(
                         for ref in [context["reverse_locations"].get(item.get("tile_id"))]
                         if isinstance(item, Mapping) and ref
                     }
+        if mode == "settlement":
+            from smacx_settlement import candidate_locations, parse_search, shortlist, economic_assessment, terrain_summary
+            from smacx_spatial_scope import semantic_spatial_registry
+            definition = parse_search(scenario_json)
+            identity, projection = world._projection()
+            objects = world._objects(projection)
+            topology = world._topology(projection)
+            area = origin_ref or (subject_refs or [""])[0]
+            refs, search = candidate_locations(topology, objects,
+                semantic_spatial_registry(world.store, world.scope, projection), area,
+                min(max(radius, 0), 32), definition)
+            revision = str(projection.get("action_revision") or "")
+            context = _semantic_selector_context(revision)
+            ids = [context["by_ref"][ref] for ref in refs if ref in context["by_ref"]]
+            receipt = _call("semantic_base_site_receipts", target_tile_ids=ids, terrain_potential=True)
+            if receipt.get("ok") is not True or receipt.get("action_revision") != revision:
+                return {"ok": False, "error": "settlement_observation_changed_retry"}
+            rows = [r for r in receipt.get("items", []) if
+                (definition['domain'] != 'sea' and r.get('legal_for_land_colony') is True) or
+                (definition['domain'] != 'land' and r.get('legal_for_sea_colony') is True)]
+            from smacx_mechanics import mobility_profile, object_location
+            actor = objects.get(area, {})
+            if 'max_travel_turns' in definition and actor.get('kind') != 'own_unit':
+                raise ValueError('settlement_travel_limit_requires_owned_colony_origin')
+            travel = {}
+            if actor.get('kind') == 'own_unit':
+                from smacx_mechanics import field_value
+                if not (field_value(actor, 'roles', {}) or {}).get('colony'):
+                    raise ValueError('settlement_unit_origin_requires_colony')
+                profile = mobility_profile(objects, 'settlement-colony', subject_ref=area, topology=topology)
+                for row in rows:
+                    route = topology.route(object_location(actor), row['location_ref'], profile)
+                    travel[row['location_ref']] = {'arrival_turns': route.turns,
+                        'reachable': route.reachable, 'eta_kind': route.eta_kind,
+                        'uncertainty': list(route.uncertainty)}
+                if 'max_travel_turns' in definition:
+                    rows = [r for r in rows if travel[r['location_ref']]['reachable'] and
+                        travel[r['location_ref']]['arrival_turns'] is not None and
+                        travel[r['location_ref']]['arrival_turns'] <= definition['max_travel_turns']]
+            selected = shortlist(rows, definition['purpose'])
+            if selected:
+                detailed = _call('semantic_base_site_receipts',
+                    target_tile_ids=[r['tile_id'] for r in selected], include_economy=True, terrain_potential=True)
+                if detailed.get('ok') is not True or detailed.get('action_revision') != revision:
+                    return {'ok': False, 'error': 'settlement_observation_changed_retry'}
+                selected = detailed.get('items', [])
+            items = []
+            for row in selected:
+                items.append({'location_ref': row['location_ref'], 'terrain': row.get('terrain_kind'),
+                    'economic_assessment': economic_assessment(row),
+                    'foreign_and_owned_radius_overlap': row.get('overlapping_known_bases', []),
+                    'colony_travel': travel.get(row['location_ref']),
+                    'terrain_potential': terrain_summary(row),
+                    'legality': 'current native receipt; revalidate at founding'})
+            if detail != 'deep':
+                from smacx_settlement import compact_assessment
+                for item in items:
+                    item['economic_assessment'] = compact_assessment(item['economic_assessment'])
+            result = {'ok': True, 'mode': 'settlement', 'schema': 'smacx.settlement-search.v1',
+                'items': items, 'search': {**search, 'eligible_evaluated': len(rows)},
+                'valid_while': {'action_revision': revision},
+                'strategy_boundary': 'Advisory alternatives, not global rankings. Change area or purpose, or nominate any exact site with compare.',
+                'next': 'Select a location_ref for existing colony movement/founding; deep counterfactual site_economy exposes allocations and improvements.'}
+            return world._trim(result, world._budget(detail, int(os.environ.get('SMACX_CONTEXT_LENGTH', '65536'))))
         context_length = int(os.environ.get("SMACX_CONTEXT_LENGTH", "65536"))
         result = world.query(
             mode=mode, subject_refs=subject_refs or (), origin_ref=origin_ref,
@@ -2721,6 +2911,10 @@ def smac_cognition(
     compact_outcome: str = "",
     foreground: bool = True,
 ) -> dict:
+    if action not in {"watch_inspect", "scope_inspect", "plan_health"}:
+        denied = _sovereign_memory_gate()
+        if denied:
+            return denied
     match_id, session_id, agent_id, perspective_id = _managed_scope_identity()
     if action == "plan_health":
         # Recovery can publish the journal before the lazy world collector
@@ -2827,6 +3021,78 @@ def smac_decision(
     target_unit_ref: str = "",
     finish_ready_units: bool = False,
     detail: Literal["compact", "full"] = "compact",
+) -> dict:
+    notices = []
+    seen = set()
+    for _ in range(5):
+        frame = _decision_frame_once(own_unit_ref, target_location_ref,
+            target_unit_ref, finish_ready_units, detail)
+        if notices:
+            previous = next(iter(seen))
+            current = frame.get("identity") or {}
+            if current and (str(current.get("match_id") or ""), str(current.get("session_id") or "")) != previous[:2]:
+                return {"ok": False, "error": {"code": "notification_scope_changed"},
+                    "automatic_notifications": notices, "required_next": {"tool": "smac_decision"}}
+            frame["automatic_notifications"] = notices
+            notices[-1]["following_observation"] = {
+                "available": bool(frame.get("ok")),
+                "revision_changed": bool(current and str(current.get("revision")) != notices[-1].get("before_revision")),
+                "meaning": "A later observation does not by itself verify any pending game effect."}
+        if not MANAGED_ATTACHED or not frame.get("ok") or len(notices) >= 4:
+            return frame
+        decision_id = frame.get("decision_id")
+        with DECISION_LOCK:
+            cached = DECISION_CACHE.get(decision_id) or {}
+            choices = cached.get("choices") or {}
+            eligible = [(cid, choice) for cid, choice in choices.items()
+                if choice.get("command") == "acknowledge_popup"
+                and choice.get("meaning") in {
+                    "Acknowledge this reviewed information-only game notification.",
+                    "Acknowledge this information-only faction introduction."}]
+        # This exact native classification comes only from the reviewed label
+        # whitelist or the reviewed non-diplomatic INTRO classifier.
+        # A generic one-button popup is deliberately insufficient.
+        if frame.get("focus", {}).get("kind") != "interaction" or len(choices) != 1 or len(eligible) != 1:
+            return frame
+        identity = frame.get("identity") or {}
+        marker = tuple(str(identity.get(k) or "") for k in ("match_id", "session_id", "revision"))
+        if marker in seen:
+            frame["notification_drain"] = {"status": "unchanged_observation", "automatic_retry": False}
+            frame["choices"] = []
+            frame["required_next"] = {"tool": "smac_wait",
+                "reason": "The dismissed notification has not visibly transitioned yet; wait for a fresh observation."}
+            return frame
+        seen.add(marker)
+        evidence = {"popup_label": frame["focus"].get("popup_label"),
+            "information": frame.get("information", []), "state": frame.get("state", {}),
+            "identity": identity, "turn": frame.get("turn"),
+            "meaning": "Reviewed notification captured before native dismissal; cognitive acknowledgement remains required. Any pending game effect requires later observation."}
+        try:
+            _, attention = _runtime_services()
+            projection = attention.world_store.load(attention.scope, attention.timeline_id)
+            if not projection or str(projection.get("action_revision")) != marker[2]:
+                return frame
+            item = attention.enqueue("game_notification", evidence,
+                observation_cursor=int(projection["observation_cursor"]),
+                session_id=marker[1], turn=frame.get("turn"),
+                dedupe_key="reviewed-notice:" + ":".join(marker))
+        except Exception:
+            # Do not dismiss evidence that could not first be durably captured.
+            frame["notification_drain"] = {"status": "capture_unavailable", "automatic_retry": False}
+            return frame
+        receipt = _public_execution_receipt(_execute_choice_once(decision_id, eligible[0][0]))
+        notices.append({"attention_id": item.get("attention_id"),
+            "popup_label": evidence["popup_label"], "receipt": receipt,
+            "before_revision": marker[2], "cognitively_acknowledged": False})
+        if not receipt.get("ok") or receipt.get("queued"):
+            return {"ok": bool(receipt.get("ok")), "automatic_notifications": notices,
+                "required_next": {"tool": "smac_decision", "reason": "Observe current state; dismissal was not verified. Do not replay the old handle."}}
+    return frame
+
+
+def _decision_frame_once(
+    own_unit_ref: str = "", target_location_ref: str = "", target_unit_ref: str = "",
+    finish_ready_units: bool = False, detail: str = "compact",
 ) -> dict:
     authority = _sovereign_gameplay_gate("Decision enumeration")
     if authority:
@@ -3042,6 +3308,10 @@ def smac_decision(
             "choices": public_choices,
             "information": _decision_information(choices_result.get("choices", []), semantic_context),
         }
+        with DECISION_LOCK:
+            choice_recovery = (DECISION_CACHE.get(decision_id) or {}).get("choice_recovery")
+        if choice_recovery:
+            frame["choice_recovery"] = choice_recovery
         if phase == "turn":
             frame["choice_scope"] = {
                 "family": choice_kind,
@@ -3249,6 +3519,10 @@ def _smac_choices_once(
             "execute_at_most": 1,
         },
     }
+    with DECISION_LOCK:
+        choice_recovery = (DECISION_CACHE.get(decision_id) or {}).get("choice_recovery")
+    if choice_recovery:
+        frame["choice_recovery"] = choice_recovery
     if kind == "production":
         frame["production_context"] = _production_catalog_context(result)
     if kind == "base_citizens":
@@ -3675,7 +3949,10 @@ def _refresh_rejected_decision(
         recovery["frame"] = frame
         if isinstance(frame.get("required_next"), dict):
             response["required_next"] = dict(frame["required_next"])
-        if frame.get("ok") and isinstance(frame.get("choices"), list):
+        if (frame.get("ok") and frame.get("choices")
+                and isinstance(frame.get("choices"), list)
+                and not response["required_next"].get("stop_after")):
+            response["error"]["message"] = "The submitted handles were rejected. A fresh guarded frame is already supplied at recovery.frame; select from its choices and copy its decision_id and the selected choice_id exactly."
             response["required_next"].update({
                 "select_choice_from": "recovery.frame.choices",
                 "instruction": "The submitted IDs are unusable. Select one current choice from recovery.frame and copy both replacement IDs exactly.",
@@ -3684,6 +3961,8 @@ def _refresh_rejected_decision(
                     "choice_id": rejected_choice_id,
                 },
             })
+        elif frame.get("ok"):
+            response["error"]["message"] = "The submitted handles were rejected. Follow recovery.frame.required_next; no replacement action is offered by this frame."
         # A changed turn can require the sovereign episode to end. Preserve
         # that signal at receipt level as well as inside the recovery frame.
         for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
@@ -3698,6 +3977,66 @@ def _refresh_rejected_decision(
     return response
 
 
+def _attach_post_action_decision(response: dict, key: tuple[str, str]) -> dict:
+    """Observe once after nonqueued success; observation does not certify completion."""
+    if os.environ.get("SMACX_POST_ACTION_DECISION", "1") == "0" or not MANAGED_ATTACHED:
+        return response
+    if not response.get("ok") or response.get("execution_status") not in {"completed", "order_assigned", "accepted"}:
+        return response
+    if response.get("turn_handoff_required") or response.get("sleep") or response.get("queued") \
+            or (response.get("required_next") or {}).get("stop_after"):
+        return response
+    started = time.monotonic()
+    try:
+        frame = smac_decision()
+        identity = frame.get("identity") or {}
+        if identity and tuple(str(identity.get(k) or "") for k in ("match_id", "session_id")) != key:
+            frame = {"ok": False, "error": {"code": "post_action_scope_changed"}}
+    except Exception as exc:
+        frame = {"ok": False, "error": {"code": "post_action_observation_failed",
+                                      "exception_type": type(exc).__name__}}
+    response["post_action_decision"] = {"schema": "smacx.post-action-decision.v1", "frame": frame}
+    execution = response.get('execution') or {}
+    if frame.get('ok') and execution.get('movement_observation'):
+        reconciliation = {'status': 'later_position_unavailable',
+                          'meaning': 'Earlier receipt remains historical; no arrival or failure cause inferred.'}
+        try:
+            from smacx_order_attention import unit_state
+            _, tracking = _runtime_services()
+            projection = tracking.world_store.load(tracking.scope, tracking.timeline_id)
+            if projection and str(projection.get('action_revision')) == str((frame.get('identity') or {}).get('revision')):
+                unit_ref = (response.get('executed_choice') or {}).get('own_unit_ref')
+                state = unit_state(projection, unit_ref)
+                if state:
+                    reconciliation = {
+                        'status': 'later_current_position_observed', 'unit_ref': unit_ref,
+                        'earlier_location_ref': execution.get('observed_location_ref'),
+                        'later_location_ref': state['location_ref'],
+                        'later_action_revision': projection['action_revision'],
+                        'later_observation_cursor': projection.get('observation_cursor'),
+                        'meaning': 'Use this later position for current placement. The earlier receipt sample is superseded for placement only; route, cause, arrival and objective completion are not established.'}
+        except Exception:
+            pass  # Optional comparison never changes execution success or triggers replay.
+        response['movement_reconciliation'] = reconciliation
+    if frame.get("ok"):
+        response["required_next"] = dict(frame.get("required_next") or {"tool": "smac_decision"})
+        if frame.get("choices"):
+            response["required_next"]["select_choice_from"] = "post_action_decision.frame.choices"
+        for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
+            if field in frame:
+                response[field] = frame[field]
+    else:
+        response["required_next"] = {"tool": "smac_decision",
+            "reason": "Execution outcome above is unchanged. Next observation failed; do not repeat the executed action."}
+    diagnostic_record("post_action_decision_built", {
+        "available": bool(frame.get("ok")),
+        "collection_seconds": round(time.monotonic() - started, 4),
+        "decision_id": frame.get("decision_id"),
+        "execution_status": response.get("execution_status"),
+    }, actor="mcp")
+    return response
+
+
 @mcp.tool(
     description=(
         "Execute exactly one short-lived opaque choice returned by the latest smac_decision "
@@ -3705,10 +4044,13 @@ def _refresh_rejected_decision(
         "flags, and revision guard. Supply text only when that exact choice exposes text_input; "
         "an opening base-name choice uses its native suggested default when text is omitted. "
         "Never invent command names or reuse a consumed decision. An invalid handle may return "
-        "recovery.frame: fresh evidence, not an executed retry. Select anew from that frame."
+        "recovery.frame: fresh evidence, not an executed retry. Select anew from that frame. "
+        "Settled success may include post_action_decision.frame; use its fresh choices directly. "
+        "Optionally pass attention_lease_id only after reviewing its delivered items; acknowledgement "
+        "commits independently even if the subsequent action fails. Invalid acknowledgement prevents dispatch."
     )
 )
-def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dict:
+def smac_execute_choice(decision_id: str, choice_id: str, text: str = "", attention_lease_id: str = "") -> dict:
     """Expose decision lifecycle and bound consecutive failed submissions."""
     authority = _sovereign_gameplay_gate("Choice execution")
     if authority:
@@ -3740,9 +4082,18 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         if boundary is not None:
             return {**boundary, "native_action_executed": False, "execution_status": "not_dispatched"}
 
+    acknowledgement = None
+    if attention_lease_id:
+        acknowledgement = smac_attention_ack(attention_lease_id)
+        if not acknowledgement.get("ok"):
+            return {**acknowledgement, "native_action_executed": False,
+                    "execution_status": "not_dispatched"}
+
     # Execution has already recorded its journal outcome. The provider uses
     # the selected opaque choice; native entity slots are not public identity.
     response = _public_execution_receipt(_execute_choice_once(decision_id, choice_id, text))
+    if acknowledgement is not None:
+        response["attention_acknowledgement"] = acknowledgement
     error = response.get("error")
     code = error.get("code") if isinstance(error, dict) else error
     boundary_errors = {"unknown_decision", "expired_decision", "consumed_decision",
@@ -3773,9 +4124,25 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "") -> dic
         if execution["native_call_attempted"] is False and not response.get("ok"):
             response["execution_status"] = "not_dispatched"
             response["native_action_executed"] = False
+    execution_resolution = execution.get("resolution") if isinstance(execution, dict) else None
+    with ACTION_PROGRESS_LOCK:
+        progress = ACTION_PROGRESS.get(key)
+        if progress is not None:
+            progress["last_result"] = "success" if response.get("ok") else "rejected"
+            progress["execution_resolution"] = execution_resolution
+            progress["same_state_retry_blocked"] = bool(
+                code == "native_action_rejected"
+                and _pre_dispatch_development_rejection(execution_resolution)
+            )
     if consumed and not response.get("required_next"):
-        response["required_next"] = {"tool": "smac_decision",
-            "reason": "This decision is consumed, including after rejection. Obtain a fresh frame."}
+        response["required_next"] = {"tool": "smac_decision", "reason": (
+            "This decision is consumed. Obtain a fresh frame; the exact rejected choice "
+            "will be withheld until meaningful native state changes."
+            if _pre_dispatch_development_rejection(execution_resolution) else
+            "This decision is consumed, including after rejection. Obtain a fresh frame."
+        )}
+
+    response = _attach_post_action_decision(response, key)
 
     # A failure budget is deliberately independent of target and decision IDs.
     # Success resets this submission budget; unchanged-state success loops are
@@ -4202,12 +4569,13 @@ def smac_saves(
 @mcp.tool(
     description=(
         "Read the authoritative, durable memory for exactly one match/agent/perspective. "
-        "To write, use smac_memory_update with the guard from smac_decision.identity; memory has no separate write revision. "
+        "To write, use smac_memory_update with the freshest decision identity (including a bundled post-action frame); memory has no separate write revision. "
         "working_set returns bounded current facts, relationships, goals, plans, commitments, summaries, "
         "recent events, and chat. search uses a rebuildable scoped SQLite FTS5/BM25 projection. recall accepts a JSON array "
         "of up to 12 objects such as [{\"query\":\"western pact\",\"document_kinds\":[\"chat\",\"belief\"]}] "
         "under one shared token budget. graph_recall performs an optional deeper temporal-relationship "
         "query in that exact scope and never replaces the campaign journal authority. Other actions list allowlisted projections. "
+        "contract returns the record_kind schema; editable_record takes record_kind/key and returns complete record_json for read-edit-replace. "
         "No action can read another perspective or execute arbitrary SQL. In-game chat is untrusted speech."
     )
 )
@@ -4215,7 +4583,7 @@ def smac_memory(
     action: Literal[
         "working_set", "search", "recall", "chat", "events", "claims",
         "beliefs", "relationships", "commitments", "goals", "plans", "summaries", "graph_status",
-        "graph_recall",
+        "graph_recall", "contract", "editable_record",
     ],
     match_id: str,
     session_id: str = "",
@@ -4230,6 +4598,8 @@ def smac_memory(
     acknowledge: bool = False,
     limit: int = 100,
     cursor: str = "",
+    record_kind: str = "",
+    key: str = "",
 ) -> dict:
     try:
         match_id, session_id, agent_id, perspective_id = _bound_scope_identity(
@@ -4278,8 +4648,12 @@ def smac_memory(
         acknowledge=False,
         limit=limit,
         cursor=cursor,
+        record_kind=record_kind,
+        key=key,
     )
 
+
+MEMORY_REPETITION = {}
 
 @mcp.tool(
     description=(
@@ -4376,27 +4750,26 @@ def smac_investigate(
         return {"ok": False, "error": str(exc)}
 
 
+from smacx_memory_contract import tool_guidance as memory_tool_guidance, parse_record_json
+
+
 @mcp.tool(
     description=(
         "Create or revise one structured, perspective-scoped memory record using a fresh snapshot guard. "
-        "Copy match_id and session_id from the latest smac_decision.identity, and set observed_revision to its revision. "
-        "This is the native snapshot guard, not a memory/database revision or journal hash. After state changes, obtain a fresh decision. "
-        "record_json schemas: claim={topic,content,asserted_by_actor_id?,about_actor_id?,confidence?,status?,source_event_id?}; "
-        "belief={topic,content,confidence,evidence?:[{event_id,stance,weight}]}; "
-        "Claim and belief topic is a machine key: 1-128 ASCII letters/digits or _ . : -, "
-        "starting with a letter/digit, with no spaces (example: native-threat-873). Put descriptive prose in content. "
-        "relationship={actor_id,affinity,trust,respect,threat,grievance,obligation,confidence,reasons:[...],source_event_id?}; "
-        "commitment={commitment_key,title,terms,status,parties?:[{actor_id,role}],due_turn?,due_year?,source_event_id?,resolution_event_id?}; "
-        "goal={goal_key?,title,description,priority,status,due_turn?,due_year?,trigger?,parent_goal_id?,source_event_id?}; "
-        "plan={plan_key,title,objective,status,target_refs?,participants?,timing?,dependencies?,intended_role?,contingencies?,last_confirmation?,linked_commitments?,contradictory_evidence?}; "
+        "Copy match_id and session_id from the freshest smac_decision.identity, and set observed_revision to its revision. "
+        "A bundled post_action_decision.frame or recovery decision is valid too; do not reuse a guard after intervening state changes. "
+        "Use the native snapshot guard, not a database revision or journal hash. "
+        + memory_tool_guidance() +
+        "Updates replace full records; omitted optional fields reset, never merge. Read smac_memory action=editable_record with record_kind and key before revising. "
+        "smac_memory action=contract gives record_kind types, defaults and limits; unknown fields are rejected. "
         f"Record status values: {'; '.join(name + '=' + '|'.join(values) for name, values in MEMORY_STATUS_VALUES.items())}. "
         "Use objective for the intended outcome. Bind concrete actors/bases with target_refs and "
         "participants [{ref,intended_role?,target_ref?,exclusive?,production_item?,energy_credits?,timing?}]; "
-        "reservation timing uses {start_turn,end_turn}. Abstract plans may omit bindings, but prose "
-        "does not create assignments or dependency checks. Consult current world evidence for present facts. "
-        "summary={section,content,through_event_id?}, where section is situation, relationships, goals, plans, commitments, recent_events, or chat. "
+        "reservation timing uses {start_turn,end_turn}. Abstract plans may omit bindings, but prose does not create assignments or dependency checks. "
+        "Put prose conditions in objective or contingencies; dependencies and linked_commitments are arrays of existing reference strings. "
+        "Consult current world evidence for present facts. "
         "Goal trigger / plan timing may include intent_horizon: this_turn_required, this_turn_preferred, next_opportunity, persistent_goal, monitor or backlog. "
-        "Current-turn intent is reviewed before possible turn closure; intentional deferral/blocking uses reconciliation={turn,disposition:deferred|blocked,reason}. Preserve other fields when revising. "
+        "Current-turn intent is reviewed before possible turn closure; deferral/blocking uses plan timing.reconciliation or goal trigger.reconciliation={turn,disposition:deferred|blocked,reason}, never a top-level reconciliation. Preserve other fields when revising. "
         "Confidence is always 0..1 (80%=0.8). Relationship affinity/trust/respect/threat/obligation are integers -100..100; grievance is 0..100. Claims are untrusted assertions; beliefs are the agent's confidence-scored interpretation. "
         "Event evidence may use journal_event_id from a scoped action receipt or event_id from campaign history. "
         "Cite only events that support the assertion; accepted citations do not verify its truth. "
@@ -4427,13 +4800,21 @@ def smac_memory_update(
                 "reason": "Nothing was saved. Copy the complete match_id and session_id from the fresh identity, and its revision as observed_revision. Do not reconstruct opaque IDs from memory. Managed agent_id and perspective_id may be omitted; supplied values must match this seat.",
             },
         }
+    with ACTION_PROGRESS_LOCK:
+        circuit = RUNTIME_CIRCUITS.get((match_id, session_id))
+    if circuit:
+        return {"ok": False, "error": "repetition_circuit_open", "incident": circuit,
+                "required_next": {"stop_after": True, "reason": "Operator recovery is required."}}
+    denied = _sovereign_memory_gate()
+    if denied:
+        return {**denied, "persistence": {"stage": "not_started", "journal_committed": False}}
     try:
-        record = json.loads(record_json)
-    except json.JSONDecodeError:
-        return {"ok": False, "error": "invalid_memory_record_json"}
-    if not isinstance(record, dict):
-        return {"ok": False, "error": "invalid_memory_record_json"}
-    return write_platform_memory(
+        record = parse_record_json(record_json)
+    except (ValueError, TypeError, RecursionError):
+        return {"ok": False, "error": "invalid_memory_record_json",
+            "persistence": {"stage": "not_started", "journal_committed": False,
+                "authority": "campaign_journal", "retry_policy": "Nothing written. Submit a JSON object with unique field names and bounded nesting, then explicitly retry with a fresh guard."}}
+    result = write_platform_memory(
         action,
         match_id,
         session_id,
@@ -4442,6 +4823,76 @@ def smac_memory_update(
         agent_id=agent_id,
         perspective_id=perspective_id,
     )
+    if os.environ.get("SMACX_MEMORY_REPAIR_CONTEXT", "1") != "0" and not result.get("ok") \
+            and (result.get("persistence") or {}).get("stage") == "not_started":
+        if result.get("error") in {"stale_memory_observation", "missing_memory_observation_guard"}:
+            try:
+                frame = smac_decision()
+                identity = frame.get("identity") or {}
+                if identity and (identity.get("match_id"), identity.get("session_id")) != (match_id, session_id):
+                    frame = {"ok": False, "error": {"code": "memory_repair_scope_changed"}}
+                result["repair_context"] = {"schema": "smacx.memory-repair.v1", "frame": frame,
+                    "automatic_retry": False,
+                    "instruction": "Review fresh evidence before retrying. Copy identity.revision only if the record remains supported; never relabel stale conclusions as current."}
+                if frame.get("ok"):
+                    result["required_next"] = {"instruction": "Reconsider against repair_context.frame. Retry explicitly only if supported; obey any handoff or blocked state in that frame."}
+                for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
+                    if field in frame:
+                        result[field] = frame[field]
+            except Exception as exc:
+                result["repair_context"] = {"available": False, "exception_type": type(exc).__name__}
+        elif result.get("error") == "evidence_event_scope_mismatch":
+            result["repair_context"] = {"schema": "smacx.memory-repair.v1", "automatic_retry": False,
+                "instruction": "Use only a supporting event actually read in your current perspective and timeline. World observation_cursor and attention through_cursor are not event IDs. For a summary, through_event_id is optional: omit it when no event boundary is asserted. Do not remove a required citation or substitute unrelated evidence to bypass validation."}
+    if result.get("ok"):
+        result = dict(result)
+        from smacx_memory_contract import KEYS
+        stored = result.get("record") or {}
+        receipt = {"record_kind": action, "key": stored.get(KEYS[action]),
+                   "record_id": stored.get(action + "_id"),
+                   "record_revision": stored.get(action + "_revision"),
+                   "journal_event_id": result.get("journal_event_id"),
+                   "changed": result.get("changed", True),
+                   "status": "saved" if result.get("changed", True) else "already_persisted",
+                   "meaning": "This memory is durably saved. Do not repeat unchanged content; continue using a valid frame or select another concern."}
+        result["memory_receipt"] = receipt
+        # Scope and native revision separate legitimate later reconsideration.
+        repeat_key = (match_id, session_id, agent_id, perspective_id)
+        fingerprint = (observed_revision, action, receipt["key"], receipt["journal_event_id"])
+        with ACTION_PROGRESS_LOCK:
+            previous = MEMORY_REPETITION.get(repeat_key, {})
+            count = previous.get("count", 0) + 1 if previous.get("fingerprint") == fingerprint else 1
+            MEMORY_REPETITION[repeat_key] = {"fingerprint": fingerprint, "count": count}
+        if not receipt["changed"]:
+            result["repetition_notice"] = {"count": count,
+                "meaning": "Identical memory is already persisted; this call made no progress."}
+        if not receipt["changed"] and count >= 4:
+            # Repetition while another faction plays is bounded by the
+            # supervisor's existing foreign-wait suspension, not a match-wide
+            # capability quarantine. Require fresh, same-session native proof;
+            # unknown/own-turn/interaction cases retain the hard circuit below.
+            try:
+                observed = _call("semantic_snapshot")
+                snapshot = observed.get("snapshot", {}) if observed.get("ok") else {}
+            except Exception:
+                snapshot = {}
+            if (snapshot.get("match_id") == match_id
+                    and snapshot.get("session_id") == session_id
+                    and snapshot_foreign_turn_wait(snapshot)):
+                result["sleep"] = _sleep_directive(snapshot)
+                result["required_next"] = {"stop_after": True, "ordinary_message": "WAITING"}
+                result["repetition_notice"]["handling"] = "bounded_foreign_turn_suspension"
+                return result
+            incident = {"code": "repeated_unchanged_memory", "message": "Repeated identical memory writes without changed evidence or native revision.", "attempt_count": count}
+            with ACTION_PROGRESS_LOCK:
+                RUNTIME_CIRCUITS[(match_id, session_id)] = incident
+            gap = smac_report_capability_gap(screen_or_state="unchanged sovereign bookkeeping",
+                intended_decision="continue after saving memory", required_observation="the existing durable memory receipt",
+                required_action="resolve repeated bookkeeping before autonomous continuation", why_blocked=incident["message"])
+            result.update(ok=False, incident=incident, error=incident["code"],
+                required_next={"stop_after": True, "reason": "Operator recovery is required."})
+    return result
+
 
 
 @mcp.tool(
@@ -4476,6 +4927,10 @@ def smac_notebook(
         )
     except ValueError as exc:
         return {"ok": False, "error": str(exc)}
+    if action in {"put", "delete"}:
+        denied = _sovereign_memory_gate()
+        if denied:
+            return {**denied, "persistence": {"stage": "not_started", "journal_committed": False}}
     ephemeral_reference = SESSION_LOCAL_KNOWLEDGE_REFERENCE.search(content)
     if ephemeral_reference:
         return {
