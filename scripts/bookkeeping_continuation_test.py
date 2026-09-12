@@ -45,7 +45,7 @@ assert payload['state']['faction']['ready_units']==4
 
 m.MEMORY_REPETITION.clear();m.RUNTIME_CIRCUITS.clear()
 base={'ok':True,'record':{'section':'situation','summary_id':'summary-one'},'journal_event_id':'journal-one','persistence':{'journal_committed':True}}
-with patch.object(m,'_bound_scope_identity',return_value=('match-test','session-test','agent-test','perspective-test')), patch.object(m,'_sovereign_memory_gate',return_value=None), patch.object(m,'write_platform_memory',return_value={**base,'changed':False}), patch.object(m,'smac_report_capability_gap',return_value={}) as gap:
+with patch.object(m,'_bound_scope_identity',return_value=('match-test','session-test','agent-test','perspective-test')), patch.object(m,'_sovereign_memory_gate',return_value=None), patch.object(m,'write_platform_memory',return_value={**base,'changed':False}), patch.object(m,'smac_report_capability_gap',return_value={}) as gap, patch.object(m,'_call',return_value={'ok':False}):
     for i in range(4):
         receipt=m.smac_memory_update('summary','match-test','session-test','r',json.dumps(record))
         assert receipt['memory_receipt']['status']=='already_persisted'
@@ -61,3 +61,22 @@ with patch.object(m,'MANAGED_ATTACHED',False), patch.object(m,'_sovereign_gamepl
     receipt=m.smac_execute_choice('missing','missing',attention_lease_id='reviewed')
     assert not receipt['ok'] and receipt['attention_acknowledgement']['ok']
 print(json.dumps({'passed':True,'journal_noop_restart_and_evidence':True,'bounded_repetition':True,'notification_readiness_separated':True,'acknowledgement_independent_of_execution':True}))
+
+# Only a fresh same-session foreign wait uses bounded per-seat suspension.
+for mutation, should_sleep in [({}, True), ({'session_id':'other'}, False),
+    ({'protocol':{'phase':'turn'}}, False),
+    ({'interaction':{'kind':'waiting_for_engine','engine_state':{'current_faction_id':1}}}, False),
+    ({'interaction':{'kind':'popup'}}, False)]:
+    m.MEMORY_REPETITION.clear();m.RUNTIME_CIRCUITS.clear()
+    snapshot={'match_id':'match-test','session_id':'session-test',
+        'faction':{'id':1},'protocol':{'phase':'wait'},
+        'interaction':{'kind':'waiting_for_turn','engine_state':{'current_faction_id':2}},**mutation}
+    with patch.object(m,'_bound_scope_identity',return_value=('match-test','session-test','agent-test','perspective-test')), patch.object(m,'_sovereign_memory_gate',return_value=None), patch.object(m,'write_platform_memory',return_value={**base,'changed':False}), patch.object(m,'smac_report_capability_gap',return_value={}) as gap, patch.object(m,'_call',return_value={'ok':True,'snapshot':snapshot}):
+        for i in range(4):
+            receipt=m.smac_memory_update('summary','match-test','session-test','r',json.dumps(record))
+        assert bool(receipt.get('sleep')) == should_sleep
+        assert gap.call_count == (0 if should_sleep else 1)
+        if should_sleep:
+            assert receipt['required_next']=={'stop_after':True,'ordinary_message':'WAITING'}
+            assert not m.RUNTIME_CIRCUITS
+print('PASS: foreign wait bookkeeping uses bounded suspension; own/unknown/mismatched state retains circuit')

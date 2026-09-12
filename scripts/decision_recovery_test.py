@@ -157,3 +157,15 @@ for extra in ({'queued':True}, {'sleep':{'reason':'foreign turn'}},
     receipt={'ok':True,'execution_status':'accepted',**extra}
     assert 'post_action_decision' not in m._attach_post_action_decision(receipt,key)
 print('accepted observation retains uncertainty; queued, sleep and handoff do not collect')
+
+# A successful empty wait frame must not simultaneously demand a choice.
+from unittest.mock import patch
+frame={'ok':True,'identity':identity,'phase':'wait','choices':[],
+       'required_next':{'stop_after':True,'ordinary_message':'WAITING'},
+       'sleep':{'kind':'waiting_for_turn'}}
+with patch.object(m,'smac_decision',return_value=frame):
+    response=m._refresh_rejected_decision({'ok':False,'error':{'code':'consumed_decision'}},key)
+assert response['required_next']==frame['required_next']
+assert 'select_choice_from' not in response['required_next']
+assert 'no replacement action' in response['error']['message']
+print('PASS: empty recovery frame preserves wait without contradictory choice instructions')

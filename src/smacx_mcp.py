@@ -3947,7 +3947,9 @@ def _refresh_rejected_decision(
         recovery["frame"] = frame
         if isinstance(frame.get("required_next"), dict):
             response["required_next"] = dict(frame["required_next"])
-        if frame.get("ok") and isinstance(frame.get("choices"), list):
+        if (frame.get("ok") and frame.get("choices")
+                and isinstance(frame.get("choices"), list)
+                and not response["required_next"].get("stop_after")):
             response["error"]["message"] = "The submitted handles were rejected. A fresh guarded frame is already supplied at recovery.frame; select from its choices and copy its decision_id and the selected choice_id exactly."
             response["required_next"].update({
                 "select_choice_from": "recovery.frame.choices",
@@ -3957,6 +3959,8 @@ def _refresh_rejected_decision(
                     "choice_id": rejected_choice_id,
                 },
             })
+        elif frame.get("ok"):
+            response["error"]["message"] = "The submitted handles were rejected. Follow recovery.frame.required_next; no replacement action is offered by this frame."
         # A changed turn can require the sovereign episode to end. Preserve
         # that signal at receipt level as well as inside the recovery frame.
         for field in ("turn_handoff_required", "sleep", "gameplay_mutations_blocked"):
@@ -4861,6 +4865,22 @@ def smac_memory_update(
             result["repetition_notice"] = {"count": count,
                 "meaning": "Identical memory is already persisted; this call made no progress."}
         if not receipt["changed"] and count >= 4:
+            # Repetition while another faction plays is bounded by the
+            # supervisor's existing foreign-wait suspension, not a match-wide
+            # capability quarantine. Require fresh, same-session native proof;
+            # unknown/own-turn/interaction cases retain the hard circuit below.
+            try:
+                observed = _call("semantic_snapshot")
+                snapshot = observed.get("snapshot", {}) if observed.get("ok") else {}
+            except Exception:
+                snapshot = {}
+            if (snapshot.get("match_id") == match_id
+                    and snapshot.get("session_id") == session_id
+                    and snapshot_foreign_turn_wait(snapshot)):
+                result["sleep"] = _sleep_directive(snapshot)
+                result["required_next"] = {"stop_after": True, "ordinary_message": "WAITING"}
+                result["repetition_notice"]["handling"] = "bounded_foreign_turn_suspension"
+                return result
             incident = {"code": "repeated_unchanged_memory", "message": "Repeated identical memory writes without changed evidence or native revision.", "attempt_count": count}
             with ACTION_PROGRESS_LOCK:
                 RUNTIME_CIRCUITS[(match_id, session_id)] = incident
