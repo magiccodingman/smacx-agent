@@ -12046,6 +12046,15 @@ int target_x, int target_y) {
     other_id = Vehs[other_id].next_veh_id_stack) {
         if (Vehs[other_id].faction_id != faction_id) return false;
     }
+    // Mirror the stock order_veh zone-of-control rejection. An ordinary
+    // uncloaked land unit may not cross between two hostile ZOC tiles unless
+    // it is a probe or is entering an occupied stack. Advertising that move
+    // as safe only defers an already-known rejection to the native command.
+    if (veh.triad() == TRIAD_LAND && veh.plan() != PLAN_PROBE
+    && !(Units[veh.unit_id].ability_flags & ABL_CLOAKED)
+    && veh_at(target_x, target_y) < 0
+    && mod_zoc_move(veh.x, veh.y, faction_id)
+    && mod_zoc_move(target_x, target_y, faction_id)) return false;
     return veh.triad() == TRIAD_AIR || sq->is_base()
         || (is_ocean(sq) == (veh.triad() == TRIAD_SEA));
 }

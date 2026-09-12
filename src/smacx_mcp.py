@@ -1674,6 +1674,20 @@ def _pre_dispatch_development_rejection(resolution: object) -> bool:
         }
 
 
+def _definitive_same_state_rejection(code: object, execution: object) -> bool:
+    """Withhold one terminally rejected native choice until state progress."""
+    if code != "native_action_rejected" or not isinstance(execution, dict):
+        return False
+    if execution.get("native_call_attempted") is not True \
+            or execution.get("status") != "rejected":
+        return False
+    if execution.get("command") != "move_unit":
+        return True
+    observation = execution.get("movement_observation")
+    return isinstance(observation, dict) \
+        and observation.get("reported_position_changed") is False
+
+
 def _await_deferred_action(result: dict, timeout: float = 8.0) -> dict:
     """Turn a queued native action into a definitive MCP result when possible."""
     action_id = result.get("action_id")
@@ -2432,7 +2446,7 @@ def _cache_decision_choices(identity: dict, choices: object, *,
                 "execution_resolution": previous.get("execution_resolution"),
                 "retry_same_choice": False,
                 "meaning": (
-                    "The exact native choice was rejected before execution and is withheld "
+                    "The exact native choice was rejected and is withheld "
                     "while the meaningful unit state remains unchanged. Select another returned "
                     "choice; the action may reappear after real native-state progress."
                 ),
@@ -4131,14 +4145,15 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "", attent
             progress["last_result"] = "success" if response.get("ok") else "rejected"
             progress["execution_resolution"] = execution_resolution
             progress["same_state_retry_blocked"] = bool(
-                code == "native_action_rejected"
-                and _pre_dispatch_development_rejection(execution_resolution)
+                _pre_dispatch_development_rejection(execution_resolution)
+                or _definitive_same_state_rejection(code, execution)
             )
     if consumed and not response.get("required_next"):
         response["required_next"] = {"tool": "smac_decision", "reason": (
             "This decision is consumed. Obtain a fresh frame; the exact rejected choice "
             "will be withheld until meaningful native state changes."
-            if _pre_dispatch_development_rejection(execution_resolution) else
+            if (_pre_dispatch_development_rejection(execution_resolution)
+                or _definitive_same_state_rejection(code, execution)) else
             "This decision is consumed, including after rejection. Obtain a fresh frame."
         )}
 

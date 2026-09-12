@@ -253,6 +253,28 @@ public sealed class ResponseHandlingTests
         Assert.False(PortalMaintenanceCoordinator.IsTransientLifecycleConflict(exception));
     }
 
+    [Theory]
+    [InlineData("queued", true)]
+    [InlineData("starting", true)]
+    [InlineData("running", true)]
+    [InlineData("restarting", true)]
+    [InlineData("stopped", false)]
+    [InlineData("failed", false)]
+    public void AmbiguousHarnessStopIsReconciledFromDurableState(
+        string status, bool expectedActive)
+    {
+        using var document = JsonDocument.Parse($$"""
+            {"harness_runs":[
+              {"run_id":"run-target","status":"{{status}}"},
+              {"run_id":"run-other","status":"running"}
+            ]}
+            """);
+
+        Assert.Equal(expectedActive,
+            PortalMaintenanceCoordinator.HasActiveHarnessRun(
+                document.RootElement, "run-target"));
+    }
+
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(json, Encoding.UTF8, "application/json"),
