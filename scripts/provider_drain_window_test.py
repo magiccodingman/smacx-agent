@@ -87,3 +87,23 @@ request.update(observed_unix=1600,last_content_unix=1600)
 with patch('smacx_harness_manager.time.time',return_value=1600):assert manager.reconcile_once()['operator_required']==1
 assert control.incidents[0]['details']['why_blocked']=='provider_generation_budget_exceeded'
 print('PASS: production streaming survives old deadline and quarantines at generation bound')
+
+# A telemetry helper may read a stream after reconcile captured its clock.
+# Real incident: observed_unix exceeded that clock by a fraction of a second.
+control=FakeControl();worker=FakeWorkerManager();manager=ContractHarnessManager(control,worker)
+manager.observed_running=True
+control.run['metadata']={'semantic_fingerprint':'turn-2','semantic_progress_unix':100,
+ 'semantic_sample_unix':400,'semantic_telemetry_unix':400,
+ 'semantic_baseline_telemetry':{'api_calls':0,'output_tokens':0}}
+request=dict(run_id='run-continuation',request_id='during-read',started_unix=400,
+             observed_unix=465.2,last_content_unix=465.2,phase='streaming')
+clock=[465]
+def delayed_telemetry(_):
+ clock[0]=466
+ return {'telemetry':{'api_calls':2,'output_tokens':2133,'provider_request':request}}
+manager.telemetry=delayed_telemetry
+with patch('smacx_harness_manager.time.time',side_effect=lambda:clock[0]):
+ assert manager.reconcile_once()['operator_required']==0
+assert control.run['metadata']['provider_drain']['request_id']=='during-read'
+assert control.run['metadata']['semantic_progress_unix']==100
+print('PASS: telemetry read completion clock admits live content without resetting progress')

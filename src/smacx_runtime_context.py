@@ -710,12 +710,14 @@ class RuntimeContextAssembler:
             "native_protocol": {
                 "source": "current_native_snapshot",
                 "phase": protocol.get("phase"),
+                "faction_id": (snapshot.get("faction") or {}).get("id"),
+                "current_faction_id": ((snapshot.get("interaction") or {}).get("engine_state") or {}).get("current_faction_id"),
                 "required_action": protocol.get("required_action"),
                 "ready_unit_count": len(snapshot.get("ready_unit_refs", ()))
                     if isinstance(snapshot.get("ready_unit_refs"), list) else 0,
                 "end_turn_blocked": protocol.get("end_turn_blocked"),
                 "action_revision": snapshot.get("revision"),
-                "meaning": "This current native protocol controls action readiness. Projected order counts summarize observed world state and do not prove that a unit remains ready.",
+                "meaning": "This current native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
             },
             "force_summary": _force_summary(projection),
             "operational_review": operational_context({o["object_ref"]: o for o in projection.get("objects", ())}, limit=4),

@@ -1015,6 +1015,10 @@ print(json.dumps(result,separators=(',',':')))
                         sample = self.telemetry(str(run["run_id"]))
                         if isinstance(sample.get("telemetry"), dict):
                             telemetry = sample["telemetry"]
+                            # The helper reads live streaming telemetry after the
+                            # reconciliation timestamp. Validate against read completion,
+                            # not that earlier timestamp (which rejects healthy streams).
+                            now = time.time()
                             last_telemetry = now
                             telemetry_fresh = True
                     except (DockerError, StoreError, ValueError, json.JSONDecodeError):

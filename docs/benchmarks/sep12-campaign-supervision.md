@@ -1,0 +1,10 @@
+# September 12 campaign supervision repair
+
+Preserved operator packets identify two different failures after successful recovery:
+
+- AI9 instruct, turn 21: incident `incident-14829baa6d7e4a3f92d611998a706ba7`. Three non-progressing clean yields correctly stopped repetition. The last decision explicitly offered End turn, with own/current faction 2, phase turn and zero ready units. The model nevertheless described a foreign-turn wait. Runtime context also correctly reported turn; this is model misinterpretation, not evidence of native deadlock. Current runtime evidence now includes both faction IDs and explicitly distinguishes no ready units from foreign ownership and verbal WAITING from native end turn. No action is chosen automatically.
+- AI10 low thinking, turn 10: incident `incident-8e32a10a97124218a33994547820ac59`. A live streaming request was interrupted after 372 seconds without a gameplay effect, two completed calls and 2,133 output tokens. Its stream timestamp exceeded the supervisor's pre-telemetry clock. The telemetry helper reads later than that clock; production reconciliation now validates at telemetry-read completion. Finite/future timestamp validation, the fixed request identity, silence deadline, absolute generation bound and gameplay-progress clock remain intact.
+
+Validation: production watchdog regression simulates telemetry advancing during the read and proves the request is admitted without resetting gameplay progress. Existing hard-deadline, request replacement, silence, failure, clean-yield, foreign-wait and semantic-progress contracts pass. Runtime assembly tests preserve authoritative own-turn IDs with zero ready units and existing tier/attention/continuity budgets. Live recovery and sustained progression are separate acceptance gates, to be recorded after deployment. This does not establish that the instruct model will always follow the corrected guidance.
+
+Local raw diagnostic packets remain in ignored runtime/astra/ai9-sep12.json and ai10-sep12.json; private transcripts are not committed.

@@ -1485,3 +1485,10 @@ See [bookkeeping continuation acceptance](benchmarks/bookkeeping-continuation.md
 | Parked runtime rebase | Both owner resumes failed closed because parked seats retained prepared worker `0f36a318cf6a` while the deployed reviewed worker was `287e04469e47`; checkpoints remain verified. Every verified restore now reconciles managed seats to the configured content-addressed worker image before native startup. Controlled ordinary-resume orchestration proves rebase precedes worker start, identity import and collector publication. Owner resume remains pending. |
 
 See [development and spectator acceptance](benchmarks/development-rejection-and-spectate-lifecycle.md).
+
+| September 12 supervision checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Streaming liveness during telemetry read | Observed live-request incident → production clock-order repair → delayed-read regression and bounded watchdog tests pass. Native progress is never inferred from streamed content. Live recovery/progression pending. |
+| Zero-ready-unit turn ownership | Observed instruct misinterpretation despite legal End turn choice → explicit own/current faction IDs and current-protocol guidance → runtime assembly test with own turn and zero ready units. Sovereign keeps the choice; improved live compliance remains unproven. |
+
+See [September 12 supervision evidence](benchmarks/sep12-campaign-supervision.md).
