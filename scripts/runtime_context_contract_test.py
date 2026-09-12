@@ -179,8 +179,15 @@ def main() -> int:
             "faction_id": None, "current_faction_id": None,
             "required_action": "respond", "ready_unit_count": 0,
             "end_turn_blocked": None, "action_revision": "action-9",
-            "meaning": "This current native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
+            "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
         }
+        closed = assembler.build(episode_id="episode-terminal", episode_mode="gameplay",
+            context_length=65536, episode_boundary={"turn_handoff_required": {
+                "required": True, "instruction": "Return TURN HANDOFF; no more tools."}})
+        assert closed["focus"]["kind"] == "turn_handoff"
+        assert closed["episode"]["mutation_authority"] is False
+        assert closed["gameplay_mutations_blocked"] is True
+        assert compact["episode"]["mutation_authority"] is True
         saved_snapshot = dict(snapshot)
         snapshot.update(faction={"id": 2}, ready_unit_refs=[],
             protocol={"phase": "turn", "required_action": "manage_strategy_or_end_turn", "end_turn_blocked": False},

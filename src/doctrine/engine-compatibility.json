@@ -1,5 +1,5 @@
 {
-  "engine_source_sha256": "d2030ff14ecc624b959dc191c0cdc4a3565bd61a46bf0f6a410667e059b1c4ed",
+  "engine_source_sha256": "d115203cdb5dea4c1587eeffa06b21ea71d1470a52f92d2bed84e2347b096ab4",
   "profile": "thinker-smacx-doctrine.v1",
   "scope": "reviewed bridge source plus compatible public alpha rules; unsupported gameplay INI overrides fail closed"
 }

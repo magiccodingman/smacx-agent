@@ -15431,10 +15431,11 @@ std::string semantic_command_response(const std::string& request) {
         && active_default_popup();
     bool validated_multiplayer_energy_demand_response =
         command == "respond_to_diplomatic_offer"
-        && bribe_demand_label(active_label)
+        && (bribe_demand_label(active_label) || active_label == "WEASELOUT")
         && (field_string(request, "response") == "reject"
             || field_string(request, "response") == "accept"
-            || field_string(request, "response") == "counter")
+            || (bribe_demand_label(active_label)
+                && field_string(request, "response") == "counter"))
         && multiplayer_contact_other >= 1
         && multiplayer_contact_other < MaxPlayerNum
         && multiplayer_contact_other != faction_id

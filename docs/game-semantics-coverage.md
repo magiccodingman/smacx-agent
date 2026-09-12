@@ -1507,3 +1507,8 @@ First-check follow-up deployment: both campaigns resumed by 14:56 UTC after veri
 15:13 UTC live gate: both campaigns advanced (AI9 21→22; AI10 12→13), no active incidents, native-verified peer sleep, and bounded streaming admission observed. First healthy check of three; sustained acceptance remains open.
 
 15:29 UTC check: AI10 advanced to turn 14; AI9's four invented decision IDs were safely rejected despite valid recovery frames in captured provider requests. The choice guard is verified effective, but model compliance/stability failed. Evidence retained; AI9 recovery queued without changing guard semantics. Healthy-check count reset.
+
+| Ultimatum / terminal episode checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Rejected energy-counter ultimatum | Live WEASELOUT blockage → existing semantic offer/affordability path → narrow multiplayer accept/reject gate → exact private-save two-client native replay confirms transfer, relations, dialogue completion and unchanged units/bases; invalid and duplicate submissions rejected. Production autonomous reuse pending. |
+| Handoff fence in provider evidence | Live next-turn focus contradicted fenced episode; repeated receipts became generic retry notes → current fence passed to runtime assembler with handoff focus and no gameplay authority → wire-only terminal receipt retention; fresh episode unaffected → assembler, HTTP handler and recorded-fence tests pass. No gameplay gate relaxation. Live adherence pending. |

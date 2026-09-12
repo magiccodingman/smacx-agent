@@ -439,9 +439,11 @@ class _RuntimeContextHandler(BaseHTTPRequestHandler):
                     _renew_runtime_authority(episode_id, token, run_id, owner_session_id)
                 elif not attention.sovereign_state():
                     raise AttentionError("sovereign_episode_authority_lost")
+            with RUNTIME_EPISODE_LOCK:
+                boundary = RUNTIME_EPISODE_TURNS.get(episode_id, {}).get("boundary")
             payload = assembler.build(
                 episode_id=episode_id, episode_mode=episode_mode,
-                context_length=context_length,
+                context_length=context_length, episode_boundary=boundary,
             )
             telemetry_dimensions = {"episode_mode": episode_mode}
             for query_name, metric_name in (

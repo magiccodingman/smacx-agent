@@ -443,6 +443,27 @@ def _memory_completion_content(content):
     return content
 
 
+def _restore_terminal_receipts(messages):
+    """Retain terminal directives when Hermes replaces exact repeats with notes."""
+    rows = copy.deepcopy(messages)
+    last_user = max((i for i, row in enumerate(rows)
+        if isinstance(row, dict) and row.get("role") == "user"), default=-1)
+    terminal = {}
+    for row in rows[last_user + 1:]:
+        if not isinstance(row, dict) or row.get("role") != "tool":
+            continue
+        content = row.get("content")
+        result = _managed_tool_result(content)
+        if isinstance(content, str) and "[hermes note: this result is byte-identical" in content:
+            source = re.search(r"tool_call_id ([^\s)]+)", content)
+            if source and source.group(1) in terminal:
+                row["content"] = terminal[source.group(1)]
+                result = _managed_tool_result(row["content"])
+        if isinstance(result, dict) and (result.get("required_next") or {}).get("stop_after") is True:
+            terminal[str(row.get("tool_call_id") or "")] = row["content"]
+    return rows
+
+
 def _managed_tool_result(content: object) -> dict | None:
     """Decode direct or Hermes-wrapped MCP JSON for wire-only compaction."""
     if not isinstance(content, str):
@@ -668,7 +689,7 @@ def _install() -> None:
         # Hermes's sanitizer may return a shallow list whose message mappings
         # are still the durable transcript objects. All semantic GC and trusted
         # runtime augmentation are provider-wire transformations only.
-        sanitized = original_sanitize(copy.deepcopy(messages))
+        sanitized = original_sanitize(_restore_terminal_receipts(messages))
         if not isinstance(sanitized, list):
             return sanitized
         sanitized = canonical_system(sanitized)

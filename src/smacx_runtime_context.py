@@ -586,7 +586,7 @@ class RuntimeContextAssembler:
         self.intent_review = intent_review
 
     def build(self, *, episode_id: str, episode_mode: str,
-              context_length: int) -> dict[str, Any]:
+              context_length: int, episode_boundary: Mapping[str, Any] | None = None) -> dict[str, Any]:
         if episode_mode not in {"gameplay", "communication", "recovery"}:
             raise ValueError("invalid_episode_mode")
         snapshot = dict(self.snapshot())
@@ -603,6 +603,11 @@ class RuntimeContextAssembler:
             current_turn=turn,
         )
         focus = _focus(snapshot)
+        handoff = (episode_boundary or {}).get("turn_handoff_required")
+        handoff = dict(handoff) if isinstance(handoff, Mapping) and handoff.get("required") is True else None
+        if handoff:
+            focus = {"focus_id": "focus-episode-handoff", "kind": "turn_handoff",
+                     "mandatory": True, "required_action": handoff.get("instruction")}
         operation_refs = [
             str(ref) for operation in active["operations"]
             for ref in operation.get("referenced_world_objects", ())
@@ -696,7 +701,8 @@ class RuntimeContextAssembler:
         payload = {
             "schema": RUNTIME_CONTEXT_SCHEMA,
             "episode": {"episode_id": episode_id, "mode": episode_mode,
-                        "mutation_authority": episode_mode == "gameplay"},
+                        "mutation_authority": episode_mode == "gameplay" and not handoff},
+            **({"turn_handoff_required": handoff, "gameplay_mutations_blocked": True} if handoff else {}),
             "identity": {
                 **projection_identity.as_dict(),
                 "world_revision": int(projection["world_revision"]),
@@ -717,7 +723,7 @@ class RuntimeContextAssembler:
                     if isinstance(snapshot.get("ready_unit_refs"), list) else 0,
                 "end_turn_blocked": protocol.get("end_turn_blocked"),
                 "action_revision": snapshot.get("revision"),
-                "meaning": "This current native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
+                "meaning": "Subject to the current episode handoff fence, this native protocol controls action readiness. Zero ready units does not mean a foreign turn: phase=turn still requires management or a returned End turn choice. WAITING text does not end a native turn. Historical wait notices and previous handoffs do not override this protocol. Projected orders do not prove current readiness.",
             },
             "force_summary": _force_summary(projection),
             "operational_review": operational_context({o["object_ref"]: o for o in projection.get("objects", ())}, limit=4),
