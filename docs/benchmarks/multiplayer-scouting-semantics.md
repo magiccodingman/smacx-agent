@@ -30,3 +30,16 @@ suite encountered existing seed-sensitive failures in earlier unrelated combat,
 diplomacy, and skip stages before a complete run; those exits are not counted as
 Explore evidence. Installed-image delivery and autonomous strategic uptake remain
 deployment gates.
+
+Before deployment, AI9 reached turn 47 and stopped on four `invalid_choice`
+submissions. The captured provider episode copied each fresh `decision_id`
+exactly but generated four UUID-shaped `choice_id` values that did not occur
+anywhere in the episode. Its current 11-choice Former menu used a different
+random UUID for every choice and every recovery enumeration. Because the
+short-lived decision already provides the scoped, one-use capability boundary,
+choice handles are now bounded frame-local ordinals (`choice-01`, and so on).
+The private command binding, exact paired-handle lookup, expiry, scope, revision,
+single-use, native validation, journal, and four-failure stop remain unchanged.
+Controlled decision-recovery and opaque-execution suites pass selection after a
+fresh recovery frame and reject invented, expired, consumed, cross-scope, and
+replayed handles. Installed provider uptake remains a deployment gate.

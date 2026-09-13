@@ -668,7 +668,10 @@ consumed and invalid-choice handles return a new frame without replaying the
 rejected action. The sovereign's separate selection executes once. Four invalid
 submissions still latch the circuit; refresh failure, wait state and session
 changes fail safely. Text correction and native action rejection do not trigger
-this handle-recovery path. `hermes_complementary_results_test.py` checks that the
+this handle-recovery path. The test also pins `choice-01` as the first bounded
+frame-local opaque handle; the paired decision cache still owns every private
+native argument and all expiry, scope, revision, one-use and replay guards.
+`hermes_complementary_results_test.py` checks that the
 original rejection and fresh frame both survive actual Hermes sanitization and
 a controlled HTTP request, without changing durable history.
 

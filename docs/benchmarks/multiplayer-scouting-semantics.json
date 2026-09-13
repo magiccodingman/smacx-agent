@@ -21,6 +21,15 @@
     "activation_synchronized": true,
     "pixels_or_ui_input_used": false
   },
+  "managed_choice_recovery": {
+    "observed_turn": 47,
+    "fresh_decision_ids_copied_exactly": 4,
+    "fabricated_uuid_choice_ids": 4,
+    "fabricated_ids_present_in_episode": false,
+    "choice_handle_after": "bounded_frame_local_ordinal",
+    "private_binding_and_native_guards_preserved": true,
+    "focused_recovery_and_opaque_execution_tests": "pass"
+  },
   "limits": {
     "autonomous_sovereign_use": "pending fresh deployed campaign",
     "strategic_path_quality": "native engine/model behavior; not claimed",

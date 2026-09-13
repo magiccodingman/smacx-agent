@@ -2372,7 +2372,12 @@ def _cache_decision_choices(identity: dict, choices: object, *,
             # catalogs can expose schema-shaped pseudo choices; withhold them
             # instead of inviting the model to invent native arguments.
             continue
-        choice_id = "choice-" + uuid.uuid4().hex
+        # The decision ID already provides the short-lived scoped capability
+        # boundary.  A second UUID makes dense menus needlessly difficult for
+        # providers to copy exactly and does not add an execution guard: the
+        # selected handle is still resolved only inside this decision's
+        # private, one-use cache.  Keep the handle opaque but bounded.
+        choice_id = f"choice-{len(public) + 1:02d}"
         item = dict(shown)
         item.pop("command", None)
         item.pop("id", None)
