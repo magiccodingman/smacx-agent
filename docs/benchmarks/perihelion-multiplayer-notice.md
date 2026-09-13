@@ -26,3 +26,20 @@ campaign was resumed or mutated by this replay.
 compiled label contract. An eighty-year live replay was not performed. Public
 deployment, verified recovery of both campaigns, and post-recovery progression
 remain open gates.
+
+Public deployment installed control image
+`sha256:ab169c249b9b9dfa9c4a23d1663b56f1fe7909ed02d519776767a327461440a9`
+and worker image
+`sha256:57d7e1191990607057e3ad779f27b394d1db70d6415f81585a9955bf12e2d530`.
+Both campaigns completed supported 5/5 recovery from their verified turn-59
+checkpoints on prepared worker `31f20d357478-b829e813a01e-57d7e1191990`,
+with four healthy native/MCP pairs, four sovereign runs, and no active incident.
+
+AI9 then crossed the original boundary. Its journal records the independently
+observed current ecology change, provider-facing `perihelion_started` context,
+and one guarded `choice-01` `acknowledge_popup` action. Native processing
+continued and checkpoint `checkpoint-0f4b0a43d9424ffa979b9e558a824be0`
+was save-verified at turn 60. This proves the repaired action is represented,
+provider-queryable, sovereign-expressible, executable, effect-verified, and
+recovery-safe at the scope of this information-only notice. AI10 was healthy at
+restored turn 59 when sampled; its independent live crossing remains pending.

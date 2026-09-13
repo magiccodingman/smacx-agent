@@ -29,9 +29,9 @@
   },
   "limits": {
     "perihelion_ends_live_replay": "not performed; compiled shared-path contract only",
-    "public_deployment": "pending",
-    "campaign_recovery": "pending",
-    "post_recovery_progression": "pending"
+    "public_deployment": "pass",
+    "campaign_recovery": "pass",
+    "post_recovery_progression": "pass on AI9 through original boundary; AI10 crossing pending"
   },
   "tests": {
     "compiled_popup_label_contract": "pass",
@@ -42,5 +42,29 @@
     "opaque_choice_execution": "pass",
     "doctrine_integration": "pass",
     "automatic_notification_drain": "pass"
+  },
+  "deployment": {
+    "control_image": "sha256:ab169c249b9b9dfa9c4a23d1663b56f1fe7909ed02d519776767a327461440a9",
+    "worker_image": "sha256:57d7e1191990607057e3ad779f27b394d1db70d6415f81585a9955bf12e2d530",
+    "prepared_worker": "smacx-agent-prepared:31f20d357478-b829e813a01e-57d7e1191990",
+    "campaign_recoveries": "2 of 2 completed 5/5",
+    "native_workers_healthy": 4,
+    "mcp_sidecars_healthy": 4,
+    "active_sovereigns": 4,
+    "active_incidents": 0,
+    "ai9": {
+      "restored_turn": 59,
+      "observed_turn": 60,
+      "context_event": "perihelion_started",
+      "choice_id": "choice-01",
+      "command": "acknowledge_popup",
+      "new_checkpoint": "checkpoint-0f4b0a43d9424ffa979b9e558a824be0",
+      "new_checkpoint_status": "save_verified"
+    },
+    "ai10": {
+      "restored_turn": 59,
+      "health": "observed_active",
+      "independent_crossing": "pending"
+    }
   }
 }
