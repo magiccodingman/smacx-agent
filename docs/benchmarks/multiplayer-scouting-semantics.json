@@ -1,0 +1,29 @@
+{
+  "checkpoint": "multiplayer_scouting_and_threat_semantics",
+  "observed": {
+    "ai9_ready_scout_held_at_base_turns_approx": 6,
+    "multiplayer_auto_explore_choice_before": false,
+    "ai10_multiple_ready_or_held_scouts_observed": true,
+    "behavioral_interpretation": "symptom only; not proof of optimal strategy"
+  },
+  "represented": {
+    "multiplayer_auto_explore_choice": true,
+    "combat_capable_defender_refs": true,
+    "noncombat_present_refs": true,
+    "defender_role_unknown_refs": true,
+    "eta_is_reachability_not_forecast": true,
+    "damage_cause_requires_separate_native_event": true
+  },
+  "executable_effect": {
+    "native_clients": 2,
+    "auto_explore_state_synchronized": true,
+    "activate_only_while_exploring": true,
+    "activation_synchronized": true,
+    "pixels_or_ui_input_used": false
+  },
+  "limits": {
+    "autonomous_sovereign_use": "pending fresh deployed campaign",
+    "strategic_path_quality": "native engine/model behavior; not claimed",
+    "broad_lan_suite": "earlier unrelated seed-sensitive stages did not complete"
+  }
+}

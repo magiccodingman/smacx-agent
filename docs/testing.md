@@ -697,3 +697,14 @@ native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).
 Provider liveness: `PYTHONPATH=src:scripts python3 scripts/provider_drain_window_test.py`
 and `PYTHONPATH=src python3 scripts/provider_content_liveness_test.py` cover the
 bounded content watermark, silence, replacement, completion and hard deadline.
+
+### Multiplayer native Explore
+
+`SMACX_TEST_AUTO_EXPLORE_ONLY=1 PYTHONPATH=src SMACX_RUNTIME_ROOT="$PWD/runtime" python3 scripts/lan_two_client_join_test.py`
+starts two isolated DirectPlay clients, assigns native Explore to a current ready
+combat unit, requires both vehicle records to carry `VSTATE_EXPLORE`, verifies
+the unit exposes only activation, cancels the order, and requires both peers to
+clear it. The broader ungated suite repeats the same assertions before its
+hold/sentry checks. The focused mode proves native state synchronization and
+cancellation; it does not prove that a sovereign will choose Explore or that the
+engine's automated path is strategically optimal.

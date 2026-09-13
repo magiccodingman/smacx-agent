@@ -386,6 +386,19 @@ def base_mechanics(topology: PerspectiveTopology,
         location = object_location(base)
         garrison = [str(item["object_ref"]) for item in own_units
                     if object_location(item) == location]
+        combat_defenders = [str(item["object_ref"]) for item in own_units
+                            if object_location(item) == location
+                            and field_is_current(item, "roles")
+                            and isinstance(field_value(item, "roles"), Mapping)
+                            and field_value(item, "roles").get("combat") is True]
+        noncombat_present = [str(item["object_ref"]) for item in own_units
+                             if object_location(item) == location
+                             and field_is_current(item, "roles")
+                             and isinstance(field_value(item, "roles"), Mapping)
+                             and field_value(item, "roles").get("combat") is False]
+        defender_role_unknown = sorted(set(garrison)
+                                       - set(combat_defenders)
+                                       - set(noncombat_present))
         reinforcements = []
         threats = []
         for unit in own_units:
@@ -461,7 +474,14 @@ def base_mechanics(topology: PerspectiveTopology,
                           and field_value(unit, "requires_support", False) is True]
         rows.append({
             "base_ref": ref, "location_ref": location,
-            "garrison_refs": garrison, "observed_defender_count": len(garrison),
+            # Keep garrison_refs as the broad co-location list for compatibility;
+            # only current combat roles count as observed defenders.
+            "garrison_refs": garrison,
+            "present_owned_unit_refs": garrison,
+            "combat_capable_defender_refs": combat_defenders,
+            "observed_defender_count": len(combat_defenders),
+            "noncombat_present_refs": noncombat_present,
+            "defender_role_unknown_refs": defender_role_unknown,
             "production": {"name": field_value(base, "production_name"),
                            "turns_remaining": completion,
                            "estimate_kind": "constant_current_surplus" if completion is not None else "unknown",
@@ -475,7 +495,7 @@ def base_mechanics(topology: PerspectiveTopology,
             "visible_foreign_response": sorted(threats,
                                                key=lambda row: (row["minimum_observed_eta_turns"] is None,
                                                                 (row["minimum_observed_eta_turns"] if row["minimum_observed_eta_turns"] is not None else 10**9)))[:12],
-            "foreign_force_boundary": "Visible foreign forces are a lower bound, not a complete force estimate. Formal relationship, movement ZOC and inferred intent are separate evidence.",
+            "foreign_force_boundary": "Visible foreign forces are a lower bound, not a complete force estimate. Formal relationship, movement ZOC and inferred intent are separate evidence. Reachability ETA is not a forecast that the contact will attack.",
             "support_burden": len(supported_refs),
             "supported_unit_refs": supported_refs[:32],
             "support_mineral_cost": base_support_cost(base),
