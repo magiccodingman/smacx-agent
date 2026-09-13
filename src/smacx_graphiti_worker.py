@@ -179,6 +179,25 @@ def _claim_rebuild(store: SmacxStore) -> dict[str, Any] | None:
     return dict(row)
 
 
+def _requeue_interrupted_rebuilds(store: SmacxStore) -> int:
+    """Return crash-interrupted projection work to the durable queue on startup."""
+    with store.transaction() as connection:
+        result = connection.execute(
+            "UPDATE graphiti_rebuild_requests SET status='queued', started_unix=NULL, "
+            "last_error='projector_restarted_before_rebuild_completed' "
+            "WHERE status='running'",
+        )
+    return int(result.rowcount)
+
+
+def graphiti_rebuild_timeout_seconds() -> float:
+    try:
+        value = float(os.environ.get("SMACX_GRAPHITI_REBUILD_TIMEOUT_SECONDS", "900"))
+    except ValueError:
+        value = 900.0
+    return min(max(value, 60.0), 3600.0)
+
+
 def _finish_rebuild(store: SmacxStore, rebuild_id: str, result: dict[str, Any]) -> None:
     okay = result.get("ok") is True
     with store.transaction() as connection:
@@ -194,6 +213,7 @@ def _finish_rebuild(store: SmacxStore, rebuild_id: str, result: dict[str, Any]) 
 
 async def run(database: Path, *, interval: float, limit: int) -> int:
     store = SmacxStore(database)
+    _requeue_interrupted_rebuilds(store)
     stopping = asyncio.Event()
     broker = RecallBroker(store, asyncio.get_running_loop())
     recall_server = _start_recall_server(broker)
@@ -245,14 +265,23 @@ async def run(database: Path, *, interval: float, limit: int) -> int:
                             request = {}
                         retired = request.get("retired_namespaces", [])
                         try:
-                            result = await projector.replace_timeline(
-                                scope,
-                                retired_namespaces=(
-                                    [str(item) for item in retired]
-                                    if isinstance(retired, list) else []
+                            result = await asyncio.wait_for(
+                                projector.replace_timeline(
+                                    scope,
+                                    retired_namespaces=(
+                                        [str(item) for item in retired]
+                                        if isinstance(retired, list) else []
+                                    ),
+                                    limit=limit,
                                 ),
-                                limit=limit,
+                                timeout=graphiti_rebuild_timeout_seconds(),
                             )
+                        except asyncio.TimeoutError:
+                            result = {
+                                "ok": False,
+                                "error": "graphiti_rebuild_timeout",
+                                "projected": 0,
+                            }
                         except Exception as exc:
                             result = {
                                 "ok": False,

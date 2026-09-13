@@ -1,0 +1,32 @@
+{
+  "checkpoint": "graphiti_rebuild_interruption_recovery",
+  "observed": {
+    "campaign": "AI - 10 - Low Thinking",
+    "turn": 81,
+    "completed_perspective_rebuilds": 1,
+    "blocked_rebuild": "rebuild-93ebe0b6665a40dba2cbd84dda5eb27c",
+    "projector_health_before_restart": "unhealthy",
+    "provider_socket_after_restart": "CLOSE_WAIT",
+    "native_workers_healthy": 2,
+    "sovereign_admission": "blocked_pending_complete_memory_restore"
+  },
+  "implemented": {
+    "provider_request_timeout_seconds": 180,
+    "whole_rebuild_timeout_seconds": 900,
+    "crash_interrupted_running_state": "requeued_on_projector_start",
+    "journal_authority": "unchanged",
+    "partial_memory_admission": "forbidden"
+  },
+  "tests": {
+    "graphiti_worker_contract": "pass",
+    "exact_scope_rebuild": true,
+    "interrupted_rebuild_requeued": true,
+    "provider_and_rebuild_timeouts_bounded": true,
+    "failure_isolated_and_observable": true
+  },
+  "limits": {
+    "public_projector_deployment": "pending",
+    "interrupted_rebuild_completion": "pending",
+    "ai10_sovereign_admission": "pending"
+  }
+}

@@ -28,6 +28,7 @@ from smacx_store import MemoryScope, SmacxStore
 
 
 PROJECTOR_NAME = "graphiti-v1"
+DEFAULT_PROVIDER_REQUEST_TIMEOUT_SECONDS = 180.0
 EXTRACTION_INSTRUCTIONS = (
     "This episode comes from one fair-play perspective in a Sid Meier's Alpha Centauri match. "
     "Never infer hidden map state or facts belonging to another player. Distinguish observed game facts, "
@@ -112,6 +113,18 @@ def graphiti_generation_parameters(
     return temperature, maximum, body
 
 
+def graphiti_provider_request_timeout_seconds() -> float:
+    """Bound one optional-memory provider call without affecting gameplay calls."""
+    try:
+        value = float(os.environ.get(
+            "SMACX_GRAPHITI_REQUEST_TIMEOUT_SECONDS",
+            str(DEFAULT_PROVIDER_REQUEST_TIMEOUT_SECONDS),
+        ))
+    except ValueError:
+        value = DEFAULT_PROVIDER_REQUEST_TIMEOUT_SECONDS
+    return min(max(value, 30.0), 600.0)
+
+
 def create_graphiti_llm_client(config: GraphitiRuntimeConfig) -> tuple[Any, Any]:
     """Build the exact Graphiti LLM adapter and expose its sanitized wire settings."""
     try:
@@ -139,6 +152,7 @@ def create_graphiti_llm_client(config: GraphitiRuntimeConfig) -> tuple[Any, Any]
                     temperature=self.temperature, max_tokens=max_tokens,
                     response_format=self._build_response_format(response_model),
                     extra_body=body or None,
+                    timeout=graphiti_provider_request_timeout_seconds(),
                 )
                 content = response.choices[0].message.content or ""
                 if not content:
