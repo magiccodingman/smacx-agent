@@ -14,13 +14,13 @@
     "provider_queryable": "not_applicable_operator_recovery",
     "sovereign_expressible": "not_applicable_operator_recovery",
     "executable": "Recovery remains limited to a verified paired checkpoint.",
-    "effect_verified": "pending deployed sequential recovery",
+    "effect_verified": "passed: AI10 restored the turn-43 paired checkpoint on the new prepared image after AI9 recovery completed, with no cross-match filesystem error",
     "recovery_safe": "Both campaigns remained frozen and retained verified checkpoints."
   },
   "additional_hardening": "A doctrine launch failure during capability recovery now marks the maintenance operation failed instead of leaving a permanent restarting_sovereigns operation; startup reconciliation also closes an already-latched error from an interrupted deployment.",
   "validation": {
     "control_plane_contract": "passed",
     "portal_doctrine_recovery_contract": "passed",
-    "live_recovery": "pending"
+    "live_recovery": "passed; both Graphiti perspectives rebuilt, both native peers and MCP sidecars healthy, every sovereign restarted"
   }
 }

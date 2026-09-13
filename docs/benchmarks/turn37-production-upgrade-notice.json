@@ -27,9 +27,11 @@
     "automatic_notification_capture_before_dismiss": "passed",
     "decision_frame_contract": "passed",
     "managed_action_path_contract": "passed",
-    "native_cross_build": "38 link/build steps completed; post-build artifact copy was unavailable in the isolated checkout and is a deployment step",
-    "live_effect_and_peer_continuation": "pending deployment and verified checkpoint recovery",
-    "engine_compatibility_registration": "reviewed bridge diff registered as 5cc27f67c1c42e858b655d635199f4a1e9d98661ca08bc1621e923b4ee7df8d7; doctrine integration contract passed"
+    "native_cross_build": "passed after explicit CMake reconfiguration; embedded engine fingerprint 5cc27f67c1c42e858b655d635199f4a1e9d98661ca08bc1621e923b4ee7df8d7",
+    "live_effect_and_peer_continuation": "passed: turn-37 PRODUPGRADE was captured with Synthmetal Garrison -> Plasma Garrison context, guarded acknowledgement executed once, no incident remained, both peers stayed healthy, and native progress continued",
+    "engine_compatibility_registration": "reviewed bridge diff registered as 5cc27f67c1c42e858b655d635199f4a1e9d98661ca08bc1621e923b4ee7df8d7; doctrine integration contract passed",
+    "deployed_worker_base": "sha256:0f57393bd9c4c9159df1baef4af937f83528355c7537ce8817a92072eb644bf0",
+    "deployed_prepared_worker": "sha256:44ec2eb3fc419f0b1200de636cda6a0c3226853e026b28007a39fac399cbc6cd"
   },
   "limitations": [
     "The notice proves that the engine reported an upgrade; current affected queues must be observed separately.",
