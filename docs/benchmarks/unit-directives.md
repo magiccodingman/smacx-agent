@@ -98,3 +98,40 @@ only the three exact labels, identifies viewer/attacker/former-owner/base from
 the native parse fields, labels the effect pending until post-dismissal
 observation, and retains the generic rejection for every other unknown label.
 The exact-label predicate contract, managed action-path contract, and all 24 directive/affected regression suites pass. Native cross-build, deployment, post-dismissal live ownership observation, and a new clean comparison remain pending.
+
+## Clean pinned live comparison
+
+Candidate `ece37d63f49163ae5cc84db792cd79798e382ac3` was fetched, built,
+deployed, and held fixed for the measurement window. The earlier inspected
+candidate was `e5800a1`; the intermediate `672bed7` and the final candidate are
+recorded separately because the first two live windows were invalidated by the
+compression-defer and `MINDCONTROL1` defects described above. Baseline artifact
+hashes were retained unchanged before deployment.
+
+The clean window began after verified restore at turn 101 for AI9 Instruct and
+turn 91 for AI10 Low Thinking. It ended with verified parked checkpoints at
+turn 108 and turn 99. Both campaigns had two healthy native/MCP pairs, two
+sovereign seats, and no campaign incident during the measured gameplay window.
+
+The opportunity denominator is populated: retained contexts contain 22 unique
+ready actor/revision/unit observations across 12 AI9 units and 30 across 10
+AI10 units. A native turn field is not present on `runtime_context_built`, so
+these are explicitly reported as the recoverable post-window opportunity proxy
+rather than falsely labeled exact actor-turn counts.
+
+Neither profile assigned a directive. Consequently adoption was 0/22 for AI9
+and 0/30 for AI10, with zero `directive_execution` events, deterministic steps,
+completions, or interruption reasons. Provider calls inside directive slices
+were also zero because no slice began. Directive vocabulary was present in 86
+AI9 and 109 AI10 runtime-context/selection diagnostics, so this is evidence of
+an adoption or discoverability failure, not evidence that deterministic
+execution failed. More passive runtime would not establish executor value until
+the sovereign actually enters the directive path.
+
+The final ordinary portal park exposed an existing lifecycle transport failure:
+fresh verified checkpoints were captured, but the portal reported control
+unavailable and reconciliation restarted sovereign runs. The authenticated
+atomic control park then stopped all sovereigns and workers. Final read-back is
+`parked`, with verified checkpoints, zero active/live sovereign processes, and
+both MCP sidecars stopped for each match. This parking behavior is operational
+evidence separate from directive adoption.

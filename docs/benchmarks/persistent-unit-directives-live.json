@@ -1,0 +1,202 @@
+{
+  "baseline": {
+    "ai10_low_thinking": {
+      "blocked_by_faction": {
+        "peacekeepers": 133,
+        "spartans": 119
+      },
+      "blocked_inventory_evidence": {
+        "carried_forward_faction_turns": 4,
+        "same_turn_faction_turns": 16
+      },
+      "blocked_order_actor_turns": {
+        "auto_explore": 5,
+        "hold": 119,
+        "sentry_or_boarded": 128
+      },
+      "directive_eligible_actor_turns": 20,
+      "directive_eligible_rate": 0.07380073800738007,
+      "eligible_by_faction": {
+        "peacekeepers": 7,
+        "spartans": 13
+      },
+      "manual_by_faction": {
+        "peacekeepers": 7,
+        "spartans": 13
+      },
+      "manual_movement_decision_actor_turns": 20,
+      "manual_movement_decision_rate_of_eligible": 1.0,
+      "native_order_blocked_actor_turns_estimate": 252,
+      "native_order_blocked_rate_estimate": 0.9298892988929889,
+      "note": "Two actor-turns overlap the blocked estimate because closest full inventory followed an order transition; eligible evidence itself is exact.",
+      "observed_supported_actor_turns": 271,
+      "selected_choice_events": {
+        "move_unit": 10,
+        "skip_unit": 0
+      },
+      "selected_move_or_skip_actor_turns": 10,
+      "selected_move_or_skip_rate_of_eligible": 0.5
+    },
+    "ai9_instruct": {
+      "blocked_by_faction": {
+        "peacekeepers": 54,
+        "spartans": 118
+      },
+      "blocked_inventory_evidence": {
+        "carried_forward_faction_turns": 5,
+        "same_turn_faction_turns": 15
+      },
+      "blocked_order_actor_turns": {
+        "auto_explore": 14,
+        "hold": 80,
+        "sentry_or_boarded": 78
+      },
+      "directive_eligible_actor_turns": 57,
+      "directive_eligible_rate": 0.24358974358974358,
+      "eligible_by_faction": {
+        "peacekeepers": 51,
+        "spartans": 6
+      },
+      "manual_by_faction": {
+        "peacekeepers": 51,
+        "spartans": 6
+      },
+      "manual_movement_decision_actor_turns": 57,
+      "manual_movement_decision_rate_of_eligible": 1.0,
+      "native_order_blocked_actor_turns_estimate": 172,
+      "native_order_blocked_rate_estimate": 0.7350427350427351,
+      "note": "One eligible Peacekeeper actor-turn produced a repeated skip event; actor-turn rates deduplicate repeats.",
+      "observed_supported_actor_turns": 234,
+      "selected_choice_events": {
+        "move_unit": 3,
+        "skip_unit": 51
+      },
+      "selected_move_or_skip_actor_turns": 53,
+      "selected_move_or_skip_rate_of_eligible": 0.9298245614035088
+    }
+  },
+  "baseline_integrity": {
+    "artifacts_unchanged": true,
+    "pre_addendum_artifact_count": 14,
+    "pre_addendum_manifest": "baseline-artifact-hashes-before-addendum.sha256",
+    "pre_addendum_manifest_sha256": "fa585ab69571f675453b4d2fc00193da765064166f54f9119f31d5d2908ae8f1"
+  },
+  "candidate_sha": "ece37d63f49163ae5cc84db792cd79798e382ac3",
+  "clean_window": {
+    "ai10_low_thinking": {
+      "end_turn": 99,
+      "start_turn": 91
+    },
+    "ai9_instruct": {
+      "end_turn": 108,
+      "start_turn": 101
+    }
+  },
+  "conclusion": "Opportunity proxy populated for both profiles; neither assigned a directive, so deterministic executor benefit and performance remain untested. Treat as adoption/discoverability failure.",
+  "evidence_directory": "runtime/astra/persistent-unit-directives-postbenchmark-f170d5f-20260913",
+  "final_park": {
+    "ai10": {
+      "active_sovereign_runs": 0,
+      "live_sovereign_processes": 0,
+      "status": "parked",
+      "turn": 99,
+      "verified_checkpoint": true,
+      "workers": [
+        {
+          "mcp_status": "stopped",
+          "running": false
+        },
+        {
+          "mcp_status": "stopped",
+          "running": false
+        }
+      ]
+    },
+    "ai9": {
+      "active_sovereign_runs": 0,
+      "live_sovereign_processes": 0,
+      "status": "parked",
+      "turn": 108,
+      "verified_checkpoint": true,
+      "workers": [
+        {
+          "mcp_status": "stopped",
+          "running": false
+        },
+        {
+          "mcp_status": "stopped",
+          "running": false
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "runtime_context_built lacks native turn, so post opportunity uses unique perspective/world_revision/unit rather than claiming exact actor-turns",
+    "zero provider calls inside directive slices is vacuous because no directive slice began"
+  ],
+  "post": {
+    "ai10_low_thinking": {
+      "deterministic_internal_directive_steps": 0,
+      "diagnostic_events": 2652,
+      "directive_assignments_observed": 0,
+      "directive_completions_or_interruptions": 0,
+      "directive_execution_events": 0,
+      "directive_mentions_by_event_kind": {
+        "runtime_context_built": 109,
+        "runtime_selection": 109
+      },
+      "directive_stop_reasons": {},
+      "label": "AI10 Low Thinking",
+      "managed_tool_returns": {
+        "smac_attention_ack": 21,
+        "smac_choices": 5,
+        "smac_decision": 54,
+        "smac_execute_choice": 57,
+        "smac_memory_update": 18
+      },
+      "match_id": "match-0192717843140c057456a68518358b2a",
+      "measurement_note": "Unique ready actor/revision/unit is the recoverable post-window opportunity proxy; explicit turn is absent from runtime_context_built identity.",
+      "provider_calls_inside_directive_slices": 0,
+      "unique_ready_actor_revision_units": 30,
+      "unique_ready_units": 10,
+      "world_revision_span": [
+        12,
+        58
+      ]
+    },
+    "ai9_instruct": {
+      "deterministic_internal_directive_steps": 0,
+      "diagnostic_events": 2763,
+      "directive_assignments_observed": 0,
+      "directive_completions_or_interruptions": 0,
+      "directive_execution_events": 0,
+      "directive_mentions_by_event_kind": {
+        "runtime_context_built": 86,
+        "runtime_selection": 86
+      },
+      "directive_stop_reasons": {},
+      "label": "AI9 Instruct",
+      "managed_tool_returns": {
+        "smac_attention_ack": 15,
+        "smac_choices": 1,
+        "smac_decision": 46,
+        "smac_execute_choice": 44,
+        "smac_memory_update": 3
+      },
+      "match_id": "match-1bb0c9038d670215c1a8662ce0d4409f",
+      "measurement_note": "Unique ready actor/revision/unit is the recoverable post-window opportunity proxy; explicit turn is absent from runtime_context_built identity.",
+      "provider_calls_inside_directive_slices": 0,
+      "unique_ready_actor_revision_units": 22,
+      "unique_ready_units": 12,
+      "world_revision_span": [
+        13,
+        49
+      ]
+    }
+  },
+  "previous_candidate_shas": [
+    "e5800a1f44fb146ba7354e56b395e4aff52303d7",
+    "672bed716edc47c1a79f9b890c2f0f6740847c55"
+  ],
+  "schema": "smacx.persistent-unit-directives.live-acceptance.v1"
+}
