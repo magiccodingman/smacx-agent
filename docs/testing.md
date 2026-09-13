@@ -668,7 +668,10 @@ consumed and invalid-choice handles return a new frame without replaying the
 rejected action. The sovereign's separate selection executes once. Four invalid
 submissions still latch the circuit; refresh failure, wait state and session
 changes fail safely. Text correction and native action rejection do not trigger
-this handle-recovery path. `hermes_complementary_results_test.py` checks that the
+this handle-recovery path. The test also pins `choice-01` as the first bounded
+frame-local opaque handle; the paired decision cache still owns every private
+native argument and all expiry, scope, revision, one-use and replay guards.
+`hermes_complementary_results_test.py` checks that the
 original rejection and fresh frame both survive actual Hermes sanitization and
 a controlled HTTP request, without changing durable history.
 
@@ -697,3 +700,14 @@ native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).
 Provider liveness: `PYTHONPATH=src:scripts python3 scripts/provider_drain_window_test.py`
 and `PYTHONPATH=src python3 scripts/provider_content_liveness_test.py` cover the
 bounded content watermark, silence, replacement, completion and hard deadline.
+
+### Multiplayer native Explore
+
+`SMACX_TEST_AUTO_EXPLORE_ONLY=1 PYTHONPATH=src SMACX_RUNTIME_ROOT="$PWD/runtime" python3 scripts/lan_two_client_join_test.py`
+starts two isolated DirectPlay clients, assigns native Explore to a current ready
+combat unit, requires both vehicle records to carry `VSTATE_EXPLORE`, verifies
+the unit exposes only activation, cancels the order, and requires both peers to
+clear it. The broader ungated suite repeats the same assertions before its
+hold/sentry checks. The focused mode proves native state synchronization and
+cancellation; it does not prove that a sovereign will choose Explore or that the
+engine's automated path is strategically optimal.

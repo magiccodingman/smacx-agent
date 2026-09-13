@@ -7954,6 +7954,9 @@ std::string units_response() {
             << ",\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
             << ",\"hp\":" << veh.cur_hitpoints() << ",\"max_hp\":" << veh.max_hitpoints();
         if (owned) {
+            out << ",\"own_unit_ref\":" << json_string(
+                (std::string("own-unit-")
+                 + std::to_string(semantic_vehicle_handle(i))).c_str());
             const char* triad = veh.triad() == TRIAD_LAND ? "land"
                 : veh.triad() == TRIAD_SEA ? "sea" : "air";
             int carrier_capacity = semantic_carrier_capacity(i);
@@ -11329,7 +11332,8 @@ std::string semantic_snapshot_response() {
         << "\"collect_supply_pod:adjacent_visible_native_network_move\","
         << "\"found_base:land_native_network_build\","
         << "\"terraform:basic_land_native_synch_action\","
-        << "\"activate_unit:held_land_native_synch_veh\","
+        << "\"auto_explore_unit:native_explore_synch_veh\","
+        << "\"activate_unit:held_land_or_explore_native_synch_veh\","
         << "\"skip_unit:native_synch_veh\","
         << "\"hold_unit:native_synch_veh\","
         << "\"sentry_unit:native_synch_veh\","
@@ -12195,9 +12199,11 @@ bool multiplayer_development_eligible(int faction_id, int veh_id, int former_id)
 bool multiplayer_activation_eligible(int faction_id, int veh_id) {
     if (veh_id < 0 || veh_id >= *VehCount) return false;
     VEH& veh = Vehs[veh_id];
-    return veh.faction_id == faction_id && veh.triad() == TRIAD_LAND
-        && !veh_jail(veh_id) && (veh.order == ORDER_HOLD
-            || (veh.is_former() && veh.order >= ORDER_FARM && veh.order <= VehOrderFormerLast));
+    return veh.faction_id == faction_id && !veh_jail(veh_id)
+        && ((veh.state & VSTATE_EXPLORE)
+            || (veh.triad() == TRIAD_LAND && (veh.order == ORDER_HOLD
+                || (veh.is_former() && veh.order >= ORDER_FARM
+                    && veh.order <= VehOrderFormerLast))));
 }
 
 std::string multiplayer_unit_choices_response(int faction_id, int veh_id) {
@@ -12215,11 +12221,12 @@ std::string multiplayer_unit_choices_response(int faction_id, int veh_id) {
         << ",\"kind\":\"unit_actions\",\"unit_id\":" << veh_id
         << ",\"unit_name\":" << json_string(veh.name())
         << ",\"at\":{\"tile_id\":" << semantic_tile_id(veh.x, veh.y)
-        << "},\"multiplayer_validation\":\"development_v3\",\"movement_budget\":{\"movement_points\":"
+        << "},\"multiplayer_validation\":\"development_v4\",\"movement_budget\":{\"movement_points\":"
         << veh_speed(veh_id, 0) << ",\"movement_scale\":" << Rules->move_rate_roads
         << ",\"moves_remaining\":" << max(0, veh_speed(veh_id, 0) - static_cast<int>(veh.moves_spent))
         << "},\"roles\":{\"colony\":" << (veh.is_colony() ? "true" : "false")
         << ",\"former\":" << (veh.is_former() ? "true" : "false")
+        << ",\"combat\":" << (veh.is_combat_unit() ? "true" : "false")
         << "},\"order\":{\"name\":" << json_string(semantic_unit_order_name(veh)) << '}'
         << semantic_owned_terraform_task(faction_id, veh) << ",\"choices\":[";
     bool comma = false;
@@ -12264,6 +12271,14 @@ std::string multiplayer_unit_choices_response(int faction_id, int veh_id) {
             out
                 << ",\"is_ocean\":" << (is_ocean(sq) ? "true" : "false")
                 << ",\"features\":" << item_names(sq->items, goody_at(x, y)) << '}';
+        }
+        if (veh.is_combat_unit()) {
+            if (comma) out << ',';
+            comma = true;
+            out << "{\"id\":\"auto_explore:" << veh_id
+                << "\",\"command\":\"auto_explore_unit\",\"unit_id\":" << veh_id
+                << ",\"persistent\":true,\"native_automation\":true,"
+                << "\"meaning\":\"Delegate this combat unit's ongoing exploration to the native Explore order until explicitly activated or natively awakened. The engine chooses future destinations and applies normal fog, movement, encounter, and synchronization rules.\"}";
         }
         if (comma) out << ',';
         comma = true;
@@ -15344,6 +15359,13 @@ std::string semantic_command_response(const std::string& request) {
                 field_int(request, "former_id", -1)));
     bool validated_multiplayer_activation = command == "activate_unit"
         && multiplayer_activation_eligible(faction_id, multiplayer_finish_unit_id);
+    bool validated_multiplayer_auto_explore = command == "auto_explore_unit"
+        && multiplayer_finish_unit_id >= 0
+        && multiplayer_finish_unit_id < *VehCount
+        && Vehs[multiplayer_finish_unit_id].faction_id == faction_id
+        && Vehs[multiplayer_finish_unit_id].is_combat_unit()
+        && !(Vehs[multiplayer_finish_unit_id].state & VSTATE_EXPLORE)
+        && semantic_unit_requires_decision(multiplayer_finish_unit_id);
     int multiplayer_ready_units = 0;
     for (int veh_id = 0; veh_id < *VehCount; ++veh_id) {
         if (Vehs[veh_id].faction_id == faction_id
@@ -15632,6 +15654,7 @@ std::string semantic_command_response(const std::string& request) {
         || validated_multiplayer_move || validated_multiplayer_supply_pod
         || validated_multiplayer_finish
         || validated_multiplayer_development || validated_multiplayer_activation
+        || validated_multiplayer_auto_explore
         || validated_multiplayer_save
         || validated_multiplayer_end_turn || validated_multiplayer_production
         || validated_multiplayer_allocation
@@ -18549,7 +18572,20 @@ std::string semantic_command_response(const std::string& request) {
             return error_response("auto_explore_unavailable",
                 "Use auto_explore_unit only from a ready combat unit's fresh unit_actions choices.");
         }
-        Console_explore(MapWin, veh_id);
+        if (*MultiplayerActive) {
+            // The stock Console::explore handler is a local UI selection path
+            // and declines a semantically addressed vehicle in DirectPlay.
+            // VSTATE_EXPLORE is the authoritative native persistent order;
+            // publish that exact vehicle record just as hold/sentry do.
+            veh.order = ORDER_NONE;
+            veh.waypoint_x[0] = -1;
+            veh.waypoint_y[0] = 0;
+            veh.state &= ~VSTATE_ON_ALERT;
+            veh.state |= VSTATE_EXPLORE;
+            synch_veh(veh_id);
+        } else {
+            Console_explore(MapWin, veh_id);
+        }
         if (!(veh.state & VSTATE_EXPLORE)) {
             return error_response("native_auto_explore_rejected",
                 "The native Explore command did not accept this unit; observe fresh state.");
