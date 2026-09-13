@@ -61,6 +61,9 @@ def pending_intents(replayed: Mapping[str, Any], turn: int, *, limit: int = 8) -
                 "mark_blocked": "Update the same record's trigger/timing.reconciliation with current turn, disposition=blocked and reason.",
                 "cancel": "Update the same goal or plan to abandoned; preserve the reason in its description/objective."},
             "write_tool": "smac_memory_update", "preserve_existing_record_fields": True,
+            "read_before_revising": {"tool": "smac_memory", "action": "editable_record",
+                "record_kind": "item.action", "key": "item.key",
+                "instruction": "Edit the returned complete record_json; updates replace records, not patches."},
             "long_horizon_intent_does_not_block": True}
 
 

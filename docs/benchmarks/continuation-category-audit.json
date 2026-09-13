@@ -1,0 +1,36 @@
+{
+  "measurement": "Bytes summed over 111 same-history provider snapshots; serialized history rows before fixed runtime attachment. Repeated across requests, not unique evidence.",
+  "captures": {
+    "peace": {
+      "requests": 45,
+      "history_bytes_by_category": {
+        "system": 2119590,
+        "user": 15508,
+        "assistant": 717247,
+        "tool:mcp__smacx__smac_match_briefing": 167361,
+        "tool:mcp__smacx__smac_decision": 118525,
+        "tool:mcp__smacx__smac_execute_choice": 783071,
+        "tool:mcp__smacx__smac_attention_ack": 135451,
+        "tool:mcp__smacx__smac_memory_update": 153013,
+        "tool:mcp__smacx__smac_wait": 3664
+      },
+      "runtime_bytes_sum": 3230993,
+      "tokenizer_count_sum": 2125718
+    },
+    "spartan": {
+      "requests": 66,
+      "history_bytes_by_category": {
+        "system": 3228588,
+        "user": 33324,
+        "assistant": 992832,
+        "tool:mcp__smacx__smac_decision": 113158,
+        "tool:mcp__smacx__smac_match_briefing": 242997,
+        "tool:mcp__smacx__smac_execute_choice": 1585138,
+        "tool:mcp__smacx__smac_attention_ack": 144354,
+        "tool:mcp__smacx__smac_memory_update": 109876
+      },
+      "runtime_bytes_sum": 4761142,
+      "tokenizer_count_sum": 3177325
+    }
+  }
+}

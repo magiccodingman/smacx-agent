@@ -8,9 +8,14 @@ source = (Path(__file__).resolve().parents[1] / 'bridge/src/agent_bridge.cpp').r
 for size, literal in re.findall(r'\.compare\(0,\s*(\d+),\s*"([^"]+)"\)', source):
     assert int(size) == len(literal), (size, literal)
 function = re.search(r'bool bribe_demand_label\(.*?\n}', source, re.S).group()
+information = re.search(r'bool reviewed_information_popup\(.*?\n}', source, re.S).group()
 liberation = re.search(r'label\.compare\(0, sizeof\("LIBERATEBASE"\).*?== 0', source).group()
-program = '#include <string>\n#include <cassert>\n' + function + '''
+program = '#include <string>\n#include <cassert>\n' + function + information + '''
 int main() {
+ for (auto label : {"SPORESLAUNCHED", "SPOREFOREST"})
+  assert(reviewed_information_popup(label));
+ for (auto label : {"SPORESLAUNCHEDX", "SPORE", "SPOREFOREST0", "MONOLITH", "WEASELOUT"})
+  assert(!reviewed_information_popup(label));
  for (auto label : {"DEMANDBRIBE0", "DEMANDBRIBE1", "DEMANDBRIBE12"})
   assert(bribe_demand_label(label));
  for (auto label : {"DEMANDTECH0", "DEMANDBRIB", "XDEMANDBRIBE0"})

@@ -130,3 +130,19 @@ for owner in (None, 0, -1, True, '2', 8, 1):
     worker.progress['current_faction_id'] = owner
     assert not progress_foreign_turn_wait(worker.progress), owner
 print('PASS: foreign-owner engine wait sleeps; own/unknown engine wait retains watchdog')
+
+# A local blocking modal remains actionable even while another faction owns
+# ordinary turn actions. Every resumed episode receives an explicit correction;
+# only a real native wait may yield WAITING.
+interaction_prompt = HarnessManager._resume_prompt(2, {
+    'phase': 'interaction', 'interaction_kind': 'popup',
+    'faction_id': 2, 'current_faction_id': 1,
+})
+assert 'client-local blocking interaction' in interaction_prompt
+assert 'Call mcp__smacx__smac_decision now' in interaction_prompt
+assert 'Do not yield WAITING unless' in interaction_prompt
+turn_prompt = HarnessManager._resume_prompt(2, {
+    'phase': 'turn', 'faction_id': 2, 'current_faction_id': 2,
+})
+assert 'client-local blocking interaction' not in turn_prompt
+print('PASS: interaction resume corrects modal ownership without changing real waits')

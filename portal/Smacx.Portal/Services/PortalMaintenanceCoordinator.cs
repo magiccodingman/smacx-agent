@@ -697,10 +697,36 @@ public sealed class PortalMaintenanceCoordinator(
             .Select(item => item.GetProperty("run_id").GetString()).Where(item => item is not null)
             .ToArray();
         foreach (var id in ids)
-            using (await control.PostRawAsync(
-                $"api/v1/harness-runs/{Uri.EscapeDataString(id!)}/stop", new { },
-                cancellationToken)) { }
+        {
+            try
+            {
+                using (await control.PostRawAsync(
+                    $"api/v1/harness-runs/{Uri.EscapeDataString(id!)}/stop", new { },
+                    cancellationToken)) { }
+            }
+            catch (ControlPlaneException exception) when (
+                exception.Code == "control_unavailable")
+            {
+                // A Docker stop can commit just before the small control
+                // server's HTTP response is lost. Reconcile from durable run
+                // state rather than treating an ambiguous transport failure as
+                // proof that the sovereign is still running. The operation is
+                // idempotent; any still-active run keeps parking failed closed.
+                using var reconciliation = await control.GetRawAsync(
+                    "api/v1/harness-runs", cancellationToken);
+                var stillActive = HasActiveHarnessRun(
+                    reconciliation.RootElement, id!);
+                if (stillActive)
+                    throw;
+            }
+        }
     }
+
+    internal static bool HasActiveHarnessRun(JsonElement root, string runId) =>
+        root.GetProperty("harness_runs").EnumerateArray().Any(item =>
+            item.GetProperty("run_id").GetString() == runId &&
+            item.GetProperty("status").GetString() is "queued" or
+                "starting" or "running" or "restarting");
 
     private Task NotifyAsync(string matchId, CancellationToken cancellationToken) =>
         hub.Clients.Group(LobbyHub.GroupName(matchId)).SendAsync(

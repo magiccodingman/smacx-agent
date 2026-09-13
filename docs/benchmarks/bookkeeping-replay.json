@@ -1,0 +1,41 @@
+{
+  "classification": "two isolated provider completions; no tools executed; stochastic single samples, not a speed benchmark",
+  "samples": [
+    {
+      "variant": "original",
+      "seconds": 44.3,
+      "usage": {
+        "prompt_tokens": 112229,
+        "total_tokens": 112653,
+        "completion_tokens": 424,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "tool_names": [
+        "mcp__smacx__smac_memory_update"
+      ],
+      "repeated_identical_summary": false,
+      "error": null
+    },
+    {
+      "variant": "updated",
+      "seconds": 40.0,
+      "usage": {
+        "prompt_tokens": 111381,
+        "total_tokens": 111501,
+        "completion_tokens": 120,
+        "prompt_tokens_details": null,
+        "completion_tokens_details": {
+          "reasoning_tokens": 0
+        }
+      },
+      "tool_names": [
+        "mcp__smacx__smac_attention_ack"
+      ],
+      "repeated_identical_summary": false,
+      "error": null
+    }
+  ]
+}

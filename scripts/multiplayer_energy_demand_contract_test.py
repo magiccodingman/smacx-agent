@@ -33,7 +33,7 @@ int main(){
  for(auto label:{"BULLY","BULLY7","BULLY50","DEMANDBRIBE1"}) assert(!notice(label));
  for(auto r:{"accept","reject","counter"}){reply=r;assert(allowed("DEMANDBRIBE1"));assert(allowed("DEMANDBRIBE0"));}
  reply="counter";assert(!allowed("WEASELOUT"));
- for(auto r:{"accept","reject"}){reply=r;assert(!allowed("WEASELOUT"));}
+ for(auto r:{"accept","reject"}){reply=r;assert(allowed("WEASELOUT"));}
  reply="accept";assert(!allowed("DIPLO"));assert(!allowed("ENERGYLOAN"));assert(!allowed("DEMANDBRIBE1",1));assert(!allowed("DEMANDBRIBE1",-1));assert(!allowed("DEMANDBRIBE1",8));
  human=true;assert(!allowed("DEMANDBRIBE1"));human=false;popup=false;assert(!allowed("DEMANDBRIBE1"));popup=true;
  reply="invalid";assert(!allowed("DEMANDBRIBE1"));
@@ -41,6 +41,10 @@ int main(){
  reply="counter";treasury=20;assert(payment()=="ok");treasury=19;assert(payment()=="energy_demand_not_affordable");
  half=-1;assert(payment()=="energy_demand_not_affordable");reply="reject";assert(payment()=="ok");
  reply="accept";full=-1;assert(payment()=="energy_demand_not_affordable");
+ full=50;treasury=50;assert(payment(false,true)=="ok");treasury=49;assert(payment(false,true)=="energy_demand_not_affordable");
+ reply="reject";human=true;assert(!allowed("WEASELOUT"));human=false;
+ popup=false;assert(!allowed("WEASELOUT"));popup=true;
+ assert(!allowed("WEASELOUT",1));assert(!allowed("WEASELOUT",-1));assert(!allowed("WEASELOUT",8));
 }
 '''.replace('NOTICE',notice).replace('GATE',gate).replace('CHECK',check)
 with tempfile.TemporaryDirectory() as t:

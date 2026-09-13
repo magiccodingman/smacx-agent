@@ -4275,7 +4275,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                 or save_digest.get("bytes") != checkpoint.get("native_save_bytes"):
             raise WorkerManagerError("native_checkpoint_digest_mismatch")
         memory_restore = self._prepare_memory_restore(match_id, checkpoint)
-        runtime_refresh = self._refresh_match_worker_images(match_id) if refresh_runtime else []
+        # Parked seats retain an immutable prepared-image reference. Reconcile
+        # it on every verified restore so an ordinary Resume after deployment
+        # cannot launch an old engine against the new doctrine contract. With
+        # an unchanged base this is only a cached content-addressed lookup.
+        runtime_refresh = self._refresh_match_worker_images(match_id)
         if match["mode"] == "lan":
             # A fresh typed/custom lobby records the descriptive profile as
             # `custom`, but a recovery loads an already-serialized native save
@@ -4385,7 +4389,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                                            "last_recovered_unix": time.time(),
                                            "last_recovered_slot": logical_slot},
         )
-        if refresh_runtime:
+        if refresh_runtime or any(item.get("changed") for item in runtime_refresh):
             result["runtime_refresh"] = runtime_refresh
         result["memory_restore"] = memory_restore
         result["native_semantic_identity_restore"] = restored_identity
@@ -4398,7 +4402,7 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         return result
 
     def retry_match_after_update(self, match_id: str, incident_id: str) -> dict[str, Any]:
-        """Recover a capability-stopped match using current runtime images.
+        """Recover a capability or clean-yield stopped match using current images.
 
         The active incident remains latched throughout checkpoint restoration.
         It is marked recovered only after every managed native seat has
@@ -4415,7 +4419,8 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         incident = self.control.get_supervision_incident(incident_id)
         if incident["match_id"] != match_id:
             raise WorkerManagerError("incident_match_mismatch")
-        if not str(incident["incident_kind"]).startswith("capability_gap:"):
+        if (not str(incident["incident_kind"]).startswith("capability_gap:")
+                and incident["incident_kind"] != "harness_clean_yield_no_progress"):
             raise WorkerManagerError("capability_incident_required")
         if incident["status"] not in {"open", "operator_required"}:
             match = self.control.get_match(match_id)

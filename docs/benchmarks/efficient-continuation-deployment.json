@@ -1,0 +1,20 @@
+{
+  "schema": "smacx.efficient-continuation-deployment.v1",
+  "source_commit": "ef260ac64518321408fa9c672bd9f862e29132c3",
+  "control_image": "sha256:e86be604d8691563c269f71eb0288c4cab29138d133cd4ba32960fa28c60d59d",
+  "harness_image": "sha256:32b616e465eae81068a112b07ecd073b7eaa706d4bba99e1497f6f62ce30d505",
+  "source_hashes": {
+    "smacx_mcp.py": "26b807506d2378bcff2491107d66dc3ee431a695da9d6cf3129f1694613aa9b2",
+    "smacx_hermes.py": "23b03d6a890d2bfafa44a70f062e50aa439df6c9861cbf0b31f456c793474e5e",
+    "smacx_strict_prompt.py": "ca7e16ae0cdac3a373c3d5f4caf5cd9cfd7815d1a41d7ed1c0bad79bff4b9fb0",
+    "smacx_continuation.py": "49bf08d87db0ba453250f5a208dfefdfb2755c8a0461a6986c7e5bbae3fd2122"
+  },
+  "control_healthy": true,
+  "campaign_status": "parked",
+  "turn": 6,
+  "active_sovereign_runs": 0,
+  "incident_count": 0,
+  "provider_graphiti_portal_network_volume_configuration_preserved": true,
+  "live_gameplay_resumed": false,
+  "live_latency_improvement_measured": false
+}

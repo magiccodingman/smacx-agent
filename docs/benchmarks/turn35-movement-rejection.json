@@ -1,0 +1,32 @@
+{
+  "schema": "smacx.native-movement-catalog-evidence.v1",
+  "fixture": {
+    "source": "private bridge-paired AI10 turn-35 checkpoint",
+    "save_committed": false,
+    "sha256": "95c8975112e6f04e686c4a66336360230d82f9ef56cf6bfcdfdeb6a36b83767b"
+  },
+  "observed_failure": {
+    "unit_ref": "own-unit-33",
+    "origin_location_ref": "location-2251",
+    "target_location_ref": "location-2291",
+    "native_call_attempted": true,
+    "reported_position_changed": false,
+    "consecutive_rejections": 2,
+    "third_identical_choice_stopped_by_repetition_circuit": true
+  },
+  "patched_two_client_replay": {
+    "native_unit_id_private_to_fixture": 25,
+    "origin_tile_id": 2251,
+    "offered_move_tile_ids": [2211, 2252, 2171],
+    "zoc_blocked_tile_ids_not_offered": [2291, 2331, 2250],
+    "finish_and_terraform_choices_preserved": true,
+    "native_state_mutated_by_catalog_query": false
+  },
+  "managed_fallback": {
+    "scope": "one exact semantic choice in one unchanged meaningful state",
+    "definitive_unchanged_position_rejection_withheld": true,
+    "other_choices_preserved": true,
+    "choice_can_reappear_after_meaningful_native_progress": true,
+    "permanent_illegality_inferred": false
+  }
+}

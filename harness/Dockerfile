@@ -11,6 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && /opt/hermes/.venv/bin/python -c "from importlib.metadata import version; assert version('mcp') == '2.0.0'"
 COPY harness/smacx_strict_prompt.py /opt/smacx-strict-prompt/smacx_strict_prompt.py
+COPY harness/smacx_continuation.py /opt/smacx-strict-prompt/smacx_continuation.py
 COPY src/smacx_context_policy.py /opt/smacx-strict-prompt/smacx_context_policy.py
 COPY src/ /opt/smacx/src/
 COPY harness/patch_hermes_repetition.py /tmp/patch_hermes_repetition.py

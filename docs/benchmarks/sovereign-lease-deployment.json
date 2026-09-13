@@ -1,0 +1,137 @@
+{
+  "code_commit": "2ca6416",
+  "images": [
+    {
+      "container": "/smacx-agent-control-api-1",
+      "image_ref": "smacx-agent-control:episode-lease",
+      "image_id": "sha256:6fca5cd86f9844275cc81b0f1f203aef3eddff2c2c469e80f5500e9c2673e92f"
+    },
+    {
+      "container": "/smacx-agent-specialist-supervisor-1",
+      "image_ref": "smacx-agent-harness:episode-lease",
+      "image_id": "sha256:aff92f3976ba8bccd2cad9a626a23dc1e05195994c6566a975b462c691d2206a"
+    }
+  ],
+  "live_renewals": [
+    {
+      "match_id": "match-542a028ffab1c5dc9e868abd71ac87cd",
+      "episode_id": "episode-bd25539753f2d4af752ba9896dabbc32",
+      "expiry_extension_seconds": 60.277,
+      "acquisition_unchanged": true
+    },
+    {
+      "match_id": "match-542a028ffab1c5dc9e868abd71ac87cd",
+      "episode_id": "episode-2f5ffcb308f363268c6829b9486dbeaf",
+      "expiry_extension_seconds": 60.365,
+      "acquisition_unchanged": true
+    }
+  ],
+  "timer_created": false,
+  "limits": [
+    "Controlled-clock test covers the old 900-second expiry; live evidence currently covers renewal, not a full long episode."
+  ],
+  "campaigns": [
+    {
+      "match_id": "match-542a028ffab1c5dc9e868abd71ac87cd",
+      "sampled_unix": 1789012893.1221666,
+      "state": "observed_active",
+      "match_status": "running",
+      "turn": 11,
+      "reasons": [],
+      "active_sovereign_runs": 2,
+      "live_sovereign_processes": 1,
+      "run_verification_errors": [],
+      "incidents": [],
+      "checkpoints": [
+        {
+          "checkpoint_id": "checkpoint-f720089f65bf455cb7c29ca36fdbc4a9",
+          "turn": 11,
+          "year": 2111,
+          "verification": {
+            "managed_seats": 2,
+            "restored_unix": 1789012482.3963425,
+            "runtime_image": "smacx-agent-worker:pr78-gameplay",
+            "status": "restore_tested"
+          }
+        },
+        {
+          "checkpoint_id": "checkpoint-a72d884cab424742920364c8a1f3ed9d",
+          "turn": 11,
+          "year": 2111,
+          "verification": {
+            "meaning": "Native save digest and paired AI capture verified; restore not yet tested.",
+            "status": "save_verified"
+          }
+        },
+        {
+          "checkpoint_id": "checkpoint-6c5d2e753c144522bb11b63e99134fda",
+          "turn": 10,
+          "year": 2110,
+          "verification": {
+            "meaning": "Native save digest and paired AI capture verified; restore not yet tested.",
+            "status": "save_verified"
+          }
+        }
+      ],
+      "name": "AI - 7",
+      "workers": [
+        {
+          "instance_id": "instance-2d223f4b39c84688a46d181fa7771125",
+          "running": true,
+          "health": "healthy",
+          "image_ref": "smacx-agent-prepared:31f20d357478-b829e813a01e-a69c0f97190a",
+          "mcp_running": true
+        },
+        {
+          "instance_id": "instance-23429d86c2c9499ca5742e7725f61c42",
+          "running": true,
+          "health": "healthy",
+          "image_ref": "smacx-agent-prepared:31f20d357478-b829e813a01e-a69c0f97190a",
+          "mcp_running": true
+        }
+      ]
+    },
+    {
+      "match_id": "match-9416b58c5551c284e3bc92b624d05ee7",
+      "sampled_unix": 1789012893.5760682,
+      "state": "observed_active",
+      "match_status": "running",
+      "turn": 1,
+      "reasons": [],
+      "active_sovereign_runs": 2,
+      "live_sovereign_processes": 2,
+      "run_verification_errors": [],
+      "incidents": [],
+      "checkpoints": [
+        {
+          "checkpoint_id": "checkpoint-3b8cd2ac6eb745c7ac383503303674ba",
+          "turn": 1,
+          "year": 2101,
+          "verification": {
+            "managed_seats": 2,
+            "restored_unix": 1789012588.4254975,
+            "runtime_image": "smacx-agent-worker:pr78-gameplay",
+            "status": "restore_tested"
+          }
+        }
+      ],
+      "name": "AI - 8 - Instruct",
+      "workers": [
+        {
+          "instance_id": "instance-50a3e7fdb86a4e2db3ca861d51cc8d3f",
+          "running": true,
+          "health": "healthy",
+          "image_ref": "smacx-agent-prepared:31f20d357478-b829e813a01e-a69c0f97190a",
+          "mcp_running": true
+        },
+        {
+          "instance_id": "instance-d00d8e2a7326426790033caa85c04236",
+          "running": true,
+          "health": "healthy",
+          "image_ref": "smacx-agent-prepared:31f20d357478-b829e813a01e-a69c0f97190a",
+          "mcp_running": true
+        }
+      ]
+    }
+  ]
+}

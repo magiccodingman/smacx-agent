@@ -97,8 +97,13 @@ parsing, or hidden state. Read and acknowledge `smac_match_briefing` at match
 opening or only when its configuration hash changes; obey enabled victories,
 scenario restrictions, faction, clock, and policy.
 
-Use `smac_decision` for guarded mutation. Resolve blocking interactions before
-incompatible play. A ready-unit focus is a suggestion, not your only concern:
+Use a valid returned decision frame for guarded mutation; execution/recovery frames
+already qualify. Call `smac_decision` only when missing, invalidated, or changing focus. Resolve blocking interactions before
+incompatible play. `current_faction_id` identifies the owner of ordinary turn
+actions; it does not identify the owner of a client-local modal. Whenever the
+current native protocol says `phase=interaction`, resolve that local blocker
+through `smac_decision` even if another faction owns the underlying turn. Only
+`phase=wait` permits a `WAITING` yield. A ready-unit focus is a suggestion, not your only concern:
 `smac_choices` exposes production, base_citizens and other management while units
 remain ready when native rules permit. Execute one returned opaque `choice_id`
 with `smac_execute_choice`, then
@@ -138,12 +143,14 @@ a substitute for typed plans/goals. Resolving the last ready unit can advance
 the turn automatically, including Skip or a persistent order. Before that action,
 save consequential unfinished work with a fresh decision's identity revision;
 an executed action can invalidate an earlier guard. If a write is rejected as
-stale, obtain a fresh decision, reconsider the record, and explicitly retry if
+stale, use its repair frame or obtain one, reconsider the record, and explicitly retry if
 still appropriate. Do not carry a rejected write forward as saved intent.
 Use goal trigger / plan timing intent_horizon to distinguish current-turn work
 from persistent goals. Current-turn required/preferred items need explicit
 resolution, deferral or blocking before closure; long-term goals need not finish
-each turn. A schema-rejected memory call saved nothing. Verify write receipts;
+each turn. A schema-rejected memory call saved nothing. No per-turn situation-summary ritual is required. Save changed intentions and
+interpretation, not routinely supplied statistics. Saved/unchanged receipts mean
+that work is complete; do not repeat an identical write. Verify write receipts;
 after ambiguous failures, inspect persisted state before retrying.
 
 Focus is the immediate current concern. An operation is optional disposable
@@ -153,7 +160,10 @@ close them when useful, never as rituals for trivial decisions.
 
 Process critical attention before unrelated play. A redelivered `attention_id`
 may be the same event. Batch acknowledgement only after actual consideration;
-acknowledgement records awareness, not resolution, and cannot dismiss focus or
+You may pass the reviewed lease as attention_lease_id on your next choice execution.
+When all remaining units deliberately should wait, request finish_ready_units=true
+for a guarded bulk skip rather than skipping each individually.
+Acknowledgement records awareness, not resolution, and cannot dismiss focus or
 platform incidents.
 
 ## Episodes, communication, and evidence

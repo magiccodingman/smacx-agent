@@ -17,6 +17,12 @@ from typing import Any, Mapping
 
 REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$")
 
+REPAIR_RULES_MEANING = (
+    "Unit repair configuration only. base_bonus and base_facility_bonus modify repair under their applicable conditions; "
+    "they are not combat strength, defense percentages, or evidence that a base owns the required facility. "
+    "Use logistics for conditional repair applicability and combat evidence for battle estimates."
+)
+
 # Collector/private implementation details are permitted inside the durable
 # projection, but never across a provider-facing boundary.  Keep the policy in
 # one recursive serializer: filtering only WorldObject.metadata is insufficient
@@ -54,6 +60,8 @@ def provider_safe(value: Any) -> Any:
                     or lower in _PRIVATE_EXACT_KEYS:
                 continue
             result[key] = provider_safe(item)
+        if result.get("kind") == "repair_rules":
+            result["mechanical_scope"] = REPAIR_RULES_MEANING
         # Legacy snapshots may contain a shared terraforming/fuel byte or
         # foreign private aircraft state. Qualify the provider projection only;
         # retained journal evidence must never be rewritten by this repair.

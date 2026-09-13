@@ -1118,6 +1118,11 @@ class ObservationCollector:
         if semantic_cache_rows:
             self.world_store.record_observation_projections(self.scope, self.timeline_id, semantic_cache_rows)
         if self.attention is not None and (deltas or temporal_events):
+            for access_event in temporal_events:
+                if access_event.get("event_kind") == "base_resource_access_changed":
+                    self.attention.enqueue("base_resource_access", access_event,
+                        observation_cursor=cursor, priority=75, turn=turn, session_id=self.session_id,
+                        dedupe_key=content_hash(access_event))
             self.attention.capture_production_attention(
                 temporal_events, observation_cursor=cursor, turn=turn, session_id=self.session_id)
             for raid in (event for event in temporal_events if event.get("event_kind") == "native_raid_effect"):
@@ -1431,6 +1436,8 @@ class ObservationCollector:
             semantic_deltas, [*list(projection.get("temporal_events", ())), *native_events],
             turn=bundle.get("turn"),
         )
+        from smacx_settlement import access_changes
+        temporal_events.extend(access_changes(prior_objects, current_objects, bundle.get("turn")))
         publication = {
             "schema": "smacx.private-observation-publication.v1",
             "identity": identity.as_dict(),

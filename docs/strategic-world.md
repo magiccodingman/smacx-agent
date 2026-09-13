@@ -591,3 +591,62 @@ accepted order does not establish completion. Missing explicit destinations mean
 unknown assignments. Intel can join observed/remembered objects to their known
 physical masses without locating an unseen faction homeland. Explicit native
 capability-status rows describe runtime support separately from research.
+
+## Settlement discovery and resource access
+
+`smac_world(mode="settlement", origin_ref=..., radius=5)` discovers a bounded
+shortlist around an existing base, owned colony, or location. An issued region,
+frontier, theater, or spatial scope can be the origin instead. The sovereign
+chooses the area and purpose; no nominated tile is required. Optional
+`scenario_json` accepts `purpose` (`expansion`, `growth`, `production`,
+`coastal_access`, `strategic_outpost`), `domain` (`land`, `sea`, `both`), and
+`max_travel_turns` (0..32, requiring an owned colony origin). Radius is geometric;
+colony travel is separately qualified by the existing known-world route calculator.
+
+At most 32 known candidate centers receive cheap native probes and four shortlisted
+sites receive economic previews. Larger scopes use an explicitly incomplete,
+deterministic distance-spread sample. The shortlist preserves different food,
+mineral and coverage tradeoffs; coastal requests include coastal preference and
+outpost requests preserve the closest sampled candidate. It is not a global
+optimizer. Preferences never prohibit arbitrary nominated sites or legal founding.
+Use ordinary `compare` for exact sites and `counterfactual` `site_economy` with deep
+detail for full allocations and conditional development alternatives.
+
+Production descriptors are documented heuristics against colony mineral cost,
+not strategic orders. Feasible joint allocations at population 1/2/3 retain
+nutrient consumption, resource tradeoffs and shared-worker dependency. Zero-support
+mineral accumulation does not promise a colony completion date: population,
+support, riots, upkeep timing and future allocation may change the outcome.
+Current territory remains fixed in the preview; no exact post-founding border
+recomputation or net empire economic forecast is claimed.
+
+The operator has explicitly authorized settlement-only terrain and resource
+potential through fog. Native receipts expose physical rainfall/rockiness, river,
+land/sea and resource bonus descriptors for unobserved radius tiles. They do not
+expose hidden improvements, bases, ownership, units or foreign workers, and do not
+run yield helpers against hidden improvements. These tiles have unknown access
+and are excluded from current feasible worker allocations. Candidate centers
+still come from known semantic geography. Provenance remains in detailed receipts.
+
+Owned-base observations include current public access constraints. Material changes
+are frozen into observation publication, journaled, and captured as durable
+`base_resource_access` attention. The latest event remains in the base's
+`last_resource_access_change` field, available with a deep base query after attention
+acknowledgement and restart. Older events remain available through world changes.
+Missing/stale radius data is not a proved loss; discovering a nearby foreign base
+is not evidence of new construction or causation. Native relationship state and
+workability are kept distinct from inferred hostile intent.
+
+### Bookkeeping continuation
+
+Typed memory writes are idempotent against normalized current canonical input.
+`memory_receipt` distinguishes `saved` from `already_persisted` and carries the
+existing journal identity. Repeated unchanged writes are not progress; sustained
+same-record/same-native-revision repetition opens a bounded incident circuit.
+Save changed intent and interpretation, not a mandatory per-turn snapshot.
+
+`smac_execute_choice` optionally accepts `attention_lease_id` after sovereign
+review. Acknowledgement is committed independently before dispatch; invalid
+acknowledgement prevents dispatch, and failed execution does not undo awareness.
+Historical notifications no longer project obsolete action-readiness fields.
+Use current native protocol and valid execution/recovery frames for continuation.

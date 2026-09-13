@@ -605,6 +605,11 @@ class WorldService:
         while len(body) > 1 and estimate_tokens(result) > budget:
             body.pop()
             result["truncated"] = True
+        if result.get("mode") == "compare":
+            from smacx_settlement import compact_assessment
+            for row in body:
+                if 'economic_assessment' in row:
+                    row['economic_assessment'] = compact_assessment(row['economic_assessment'])
         if result.get("mode") == "counterfactual" and body:
             row = body[0]
             economy = row.get("counterfactual", {})
@@ -1071,7 +1076,7 @@ class WorldService:
                     {key: value for key, value in row.items() if key in {
                         "landmass_ref", "ocean_mass_ref", "region_ref", "frontier_ref",
                         "theater_ref", "ownership_interface_ref", "anchor_location_ref", "known_location_count",
-                        "location_count", "mobility_profile_ref", "owned_base_count",
+                        "location_count", "geographic_completeness", "mobility_profile_ref", "owned_base_count",
                         "current_foreign_base_count"}}
                     for ref, row in sorted(derived_registry.items())
                     if not subjects or ref in nominated_regions
@@ -1329,6 +1334,12 @@ class WorldService:
             ("cursor-1000000000000-1000000000000" if mode == "changes" else "cursor-1000000000000")
             if isinstance(result.get("items"), list) else None
         )
+        if mode == "compare" and runtime_base_site_receipts:
+            from smacx_settlement import economic_assessment
+            for row in result.get("items", []):
+                receipt = runtime_base_site_receipts.get(row.get("location_ref"), {})
+                if receipt:
+                    row['economic_assessment'] = economic_assessment(receipt)
         available_temporal = len(result.get("temporal_events", []))
         result = self._trim(provider_safe(result), budget)
         if mode == "changes" and result.get("ok") is not False \

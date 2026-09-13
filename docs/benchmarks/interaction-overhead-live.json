@@ -1,0 +1,53 @@
+{
+  "health": [
+    {
+      "match_id": "match-542a028ffab1c5dc9e868abd71ac87cd",
+      "sampled_unix": 1789025073.2569804,
+      "state": "observed_active",
+      "turn": 17,
+      "reasons": [],
+      "incidents": [],
+      "active_sovereign_runs": 2,
+      "live_sovereign_processes": 2,
+      "run_verification_errors": []
+    },
+    {
+      "match_id": "match-9416b58c5551c284e3bc92b624d05ee7",
+      "sampled_unix": 1789025073.5764675,
+      "state": "observed_active",
+      "turn": 11,
+      "reasons": [],
+      "incidents": [],
+      "active_sovereign_runs": 2,
+      "live_sovereign_processes": 1,
+      "run_verification_errors": []
+    }
+  ],
+  "provider_notice_delivery": [
+    {
+      "recorded_unix": 1789024945.130515,
+      "attention_ids": [
+        "attention-3cbab091000d41ae9c3fd6cbe3dd8770",
+        "attention-134a40393377420583cb13e8610f413b"
+      ]
+    },
+    {
+      "recorded_unix": 1789024959.778344,
+      "attention_ids": [
+        "attention-3cbab091000d41ae9c3fd6cbe3dd8770",
+        "attention-134a40393377420583cb13e8610f413b"
+      ]
+    },
+    {
+      "recorded_unix": 1789025010.4128263,
+      "attention_ids": [
+        "attention-3cbab091000d41ae9c3fd6cbe3dd8770",
+        "attention-134a40393377420583cb13e8610f413b"
+      ]
+    }
+  ],
+  "limitations": [
+    "Early live window, not full-turn throughput or strategic quality equivalence.",
+    "One old-handle rejection after restore returned fresh recovery frame."
+  ]
+}

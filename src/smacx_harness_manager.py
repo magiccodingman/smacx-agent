@@ -477,6 +477,24 @@ class HarnessManager:
             "produce a TURN HANDOFF only when a semantic result requires it."
         )
 
+    @staticmethod
+    def _resume_prompt(invocation_count: int, progress: Mapping[str, Any]) -> str:
+        interaction_correction = (
+            " The current native state is a client-local blocking interaction. "
+            "Call mcp__smacx__smac_decision now and resolve its returned interaction choice; "
+            "current_faction_id only owns ordinary turn actions and does not transfer this "
+            "client's modal to another sovereign. Do not yield WAITING unless the fresh "
+            "decision reports phase=wait."
+            if progress.get("phase") == "interaction" else ""
+        )
+        return (
+            f"[SMACX_EPISODE_BOUNDARY kind=resume sequence={invocation_count + 1}] "
+            "Re-anchor with the newest authoritative mcp__smacx__smac_decision state. Continue "
+            "autonomous play until the next real boundary; produce a TURN HANDOFF only "
+            "when a semantic result requires it."
+            + interaction_correction
+        )
+
     def create_run(self, descriptor: Mapping[str, Any], *,
                    initial_prompt: str | None = None,
                    run_budget_seconds: int = 3600,
@@ -620,12 +638,7 @@ class HarnessManager:
                 "mutation is unavailable in this serialized communication episode."
             )
         else:
-            prompt = (
-                f"[SMACX_EPISODE_BOUNDARY kind=resume sequence={invocation_count + 1}] "
-                "Re-anchor with the newest authoritative mcp__smacx__smac_decision state. Continue "
-                "autonomous play until the next real boundary; produce a TURN HANDOFF only "
-                "when a semantic result requires it."
-            )
+            prompt = self._resume_prompt(invocation_count, progress)
         self.control.update_harness_run(
             run_id, status="starting", container_name=container_name,
             metadata_update={
@@ -1015,6 +1028,10 @@ print(json.dumps(result,separators=(',',':')))
                         sample = self.telemetry(str(run["run_id"]))
                         if isinstance(sample.get("telemetry"), dict):
                             telemetry = sample["telemetry"]
+                            # The helper reads live streaming telemetry after the
+                            # reconciliation timestamp. Validate against read completion,
+                            # not that earlier timestamp (which rejects healthy streams).
+                            now = time.time()
                             last_telemetry = now
                             telemetry_fresh = True
                     except (DockerError, StoreError, ValueError, json.JSONDecodeError):
@@ -1095,7 +1112,7 @@ print(json.dumps(result,separators=(',',':')))
                         "intended_decision": "Continue autonomous gameplay",
                         "required_observation": "Verified gameplay effects from the stalled decision sequence",
                         "required_action": "Diagnose and repair the stalled action path before resuming",
-                        "why_blocked": "Provider activity exceeded the bounded no-progress window.",
+                        "why_blocked": (drain or {}).get("stop_reason", "Completed decision activity exceeded the bounded no-gameplay-progress window."),
                         "stall_seconds": now - progress_since,
                         "generated_tokens_without_progress": generated,
                         "api_calls_without_progress": calls, "progress": progress,
