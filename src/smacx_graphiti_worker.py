@@ -294,6 +294,16 @@ async def run(database: Path, *, interval: float, limit: int) -> int:
                         _finish_rebuild(store, str(rebuild["rebuild_id"]), result)
                         projected += int(result.get("projected", 0))
                         failed += int(not result.get("ok"))
+                        # Checkpoint recovery may enqueue one rebuild per managed
+                        # perspective. Drain that durable queue before optional
+                        # background projection so an unrelated slow provider
+                        # call cannot hold sovereign admission behind stale work.
+                        _state(store, "ready" if not failed else "degraded",
+                               active_scopes=len(scopes), projected=projected,
+                               failed=failed,
+                               error=("one_or_more_rebuilds_failed" if failed else None),
+                               phase="rebuilding", projection=projected > 0)
+                        continue
                     for scope in scopes:
                         result = await projector.run_once(scope, limit=limit)
                         projected += int(result.get("projected", 0))

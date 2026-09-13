@@ -14,6 +14,7 @@
     "provider_request_timeout_seconds": 180,
     "whole_rebuild_timeout_seconds": 900,
     "crash_interrupted_running_state": "requeued_on_projector_start",
+    "recovery_queue_priority": "drained_before_optional_background_projection",
     "journal_authority": "unchanged",
     "partial_memory_admission": "forbidden"
   },

@@ -18,5 +18,7 @@ a bounded terminal rebuild failure remains visible to the operator.
 
 The focused worker contract proves exact-scope scheduling, crash-interrupted
 requeue, bounded timeout configuration, same-loop liveness, failure visibility,
-and journal authority. Public projector deployment and successful completion of
-AI10's interrupted rebuild remain open gates.
+and journal authority. Required perspective rebuilds also drain before optional
+background projection; otherwise a slow unrelated scope can hold checkpoint
+admission behind multiple provider timeouts. Public projector deployment and
+successful completion of AI10's interrupted rebuild remain open gates.
