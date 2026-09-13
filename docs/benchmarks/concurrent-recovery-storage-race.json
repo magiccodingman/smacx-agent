@@ -1,0 +1,26 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "checkpoint": "concurrent-recovery-storage-race",
+  "incident": {
+    "match": "AI - 10 - Low",
+    "turn": 43,
+    "observed_error": "[Errno 2] No such file or directory: '/var/lib/smacx/campaigns/match-1bb0c9038d670215c1a8662ce0d4409f/.git/gc.pid'",
+    "cross_match_path": "AI - 9 - Instruct"
+  },
+  "chain": {
+    "observed": "AI10 recovery failed while storage accounting traversed an ephemeral Git maintenance file in AI9's journal repository.",
+    "represented": "The failed checkpoint attempt and exact cross-match path were retained in operator recovery_attempts.",
+    "calculated": "Storage accounting now excludes .git internals and snapshots file sizes while tolerating observational disappearance; canonical journal integrity remains strict.",
+    "provider_queryable": "not_applicable_operator_recovery",
+    "sovereign_expressible": "not_applicable_operator_recovery",
+    "executable": "Recovery remains limited to a verified paired checkpoint.",
+    "effect_verified": "passed: AI10 restored the turn-43 paired checkpoint on the new prepared image after AI9 recovery completed, with no cross-match filesystem error",
+    "recovery_safe": "Both campaigns remained frozen and retained verified checkpoints."
+  },
+  "additional_hardening": "A doctrine launch failure during capability recovery now marks the maintenance operation failed instead of leaving a permanent restarting_sovereigns operation; startup reconciliation also closes an already-latched error from an interrupted deployment.",
+  "validation": {
+    "control_plane_contract": "passed",
+    "portal_doctrine_recovery_contract": "passed",
+    "live_recovery": "passed; both Graphiti perspectives rebuilt, both native peers and MCP sidecars healthy, every sovereign restarted"
+  }
+}

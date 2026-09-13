@@ -200,6 +200,15 @@ def main() -> int:
         if storage["recent_checkpoints"] != 10 or storage["milestone_interval"] != 25 \
                 or storage["retain_full_turn_history"] is not False:
             raise AssertionError("default save retention policy changed unexpectedly")
+        repository_internals = root / "campaigns" / "match-storage" / ".git"
+        repository_internals.mkdir(parents=True)
+        (repository_internals / "gc.pid").write_text("transient")
+        archive_payload = root / "campaigns" / "match-storage" / "final.sav.zst"
+        archive_payload.write_bytes(b"archive")
+        storage = control.storage_policy()
+        if storage["completed_archive_saves"] != 1 \
+                or storage["completed_archive_bytes"] != len(b"archive"):
+            raise AssertionError("storage policy counted transient repository internals")
         updated_storage = control.set_storage_policy(
             recent_checkpoints=14, milestone_interval=50,
             retain_full_turn_history=True,

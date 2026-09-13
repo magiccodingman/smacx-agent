@@ -4145,6 +4145,10 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "PRODUCEXG" || label == "PRODUCE2" || label == "PRODUCE3"
         || label == "PRODUCEPROTO" || label == "PRODUCEPROTOQ"
         || label == "PRODUCEPROTOG"
+        // Script.txt reports that the engine already upgraded queued future
+        // production from one prototype to another. ASKPRODUPGRADE is the
+        // separate three-choice policy prompt and remains excluded.
+        || label == "PRODUPGRADE"
         // These three Script.txt entries contain text only. Production has
         // already been refused; acknowledgement neither changes the queue
         // nor chooses replacement production.
@@ -14266,6 +14270,17 @@ std::string semantic_choices_response(const std::string& request) {
                 }
                 out << '}';
             }
+            if (!strcmp(label, "PRODUPGRADE")) {
+                out << ",{\"id\":\"production_upgrade:context\","
+                    "\"kind\":\"information\","
+                    "\"event\":\"future_production_upgraded\","
+                    "\"previous_prototype_name\":"
+                    << json_string(agent_popup_parse_string(0))
+                    << ",\"replacement_prototype_name\":"
+                    << json_string(agent_popup_parse_string(1))
+                    << ",\"effect_status\":\"reported_complete_by_native_notice\","
+                    "\"meaning\":\"The engine reports that matching future production was already upgraded. Acknowledgement only closes this local presentation; inspect affected bases later for current queues.\"}";
+            }
             if ((!strcmp(label, "CALLSCOUNCIL") || !strncmp(label, "COUNCILHOT", 10))
             && CouncilProposal[faction_id] >= 0 && CouncilProposal[faction_id] < MaxProposalNum) {
                 int proposal = CouncilProposal[faction_id];
@@ -15230,8 +15245,19 @@ std::string semantic_choices_response(const std::string& request) {
                     << ",\"pact_at_risk\":" << (probe_excuse_context.pact ? "true" : "false") << '}';
             }
         } else if (label[0] && popup_information_only()) {
-            out << "{\"id\":\"popup:acknowledge\",\"command\":\"acknowledge_popup\","
-                "\"meaning\":\"Acknowledge an engine-confirmed information-only popup with no alternatives.\"}";
+            if (!*MultiplayerActive) {
+                out << "{\"id\":\"popup:acknowledge\",\"command\":\"acknowledge_popup\","
+                    "\"meaning\":\"Acknowledge an engine-confirmed information-only popup with no alternatives.\"}";
+            } else {
+                // Never advertise a multiplayer command that the guarded
+                // execution allowlist will reject. Unknown one-button labels
+                // remain visible as an explicit capability gap until their
+                // native continuation has been reviewed.
+                out << "{\"id\":\"popup:unvalidated_information_notice\","
+                    "\"kind\":\"capability_status\",\"supported\":false,"
+                    "\"popup_label\":" << json_string(label)
+                    << ",\"meaning\":\"This local one-button multiplayer notice has not passed native continuation review. No executable acknowledgement is advertised.\"}";
+            }
         } else if (!label[0] && Factions[faction_id].tech_research_id < 0
         && (*GameRules & RULES_BLIND_RESEARCH)) {
             const char* names[] = {"Explore", "Discover", "Build", "Conquer"};

@@ -705,9 +705,23 @@ class ControlPlane:
         if not isinstance(configured, Mapping):
             configured = {}
         campaign_root = self.store.path.parent / "campaigns"
-        archive_files = [item for item in campaign_root.rglob("*") if item.is_file()] \
-            if campaign_root.is_dir() else []
-        final_saves = [item for item in archive_files if item.name.endswith(".sav.zst")]
+        # Git may create and remove transient maintenance files (for example
+        # .git/gc.pid) while another match is being parked.  Those repository
+        # internals are not campaign archive payload, and a disappearing one
+        # must never abort an unrelated match recovery.
+        archive_files: list[tuple[Path, int]] = []
+        if campaign_root.is_dir():
+            for item in campaign_root.rglob("*"):
+                if ".git" in item.parts:
+                    continue
+                try:
+                    if item.is_file():
+                        archive_files.append((item, item.stat().st_size))
+                except OSError:
+                    # Storage reporting is observational. Canonical journal
+                    # reads retain their own strict integrity checks.
+                    continue
+        final_saves = [item for item, _ in archive_files if item.name.endswith(".sav.zst")]
         return {
             "ok": True,
             "recent_checkpoints": int(configured.get("recent_checkpoints", 10)),
@@ -718,7 +732,7 @@ class ControlPlane:
             "completed_archive_files": len(archive_files),
             "completed_archive_saves": len(final_saves),
             "completed_campaigns": len({item.parents[1] for item in final_saves}),
-            "completed_archive_bytes": sum(item.stat().st_size for item in archive_files),
+            "completed_archive_bytes": sum(size for _, size in archive_files),
         }
 
     def set_storage_policy(self, *, recent_checkpoints: int,

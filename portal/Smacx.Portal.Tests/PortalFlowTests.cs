@@ -762,6 +762,11 @@ public sealed class PortalFlowTests : IAsyncLifetime
         db.PortalLobbySeats.Add(new PortalLobbySeat { MatchId = match.MatchId, SeatIndex = 0,
             ControllerKind = "agent", AgentId = "agent-fixture", ControlInstanceId = "instance-fixture" });
         db.PortalAiProfiles.Add(new PortalAiProfile { AgentId = "agent-fixture", ProviderId = "provider-fixture" });
+        db.PortalMaintenanceOperations.Add(new PortalMaintenanceOperation
+        {
+            MatchId = match.MatchId, Kind = "capability_recovery", Status = "running",
+            Phase = "restarting_sovereigns", Summary = "Restarting every managed AI.",
+        });
         await db.SaveChangesAsync();
         var launches = 0;
         var pauses = 0;
@@ -802,6 +807,10 @@ public sealed class PortalFlowTests : IAsyncLifetime
         Assert.Equal(1, launches);
         Assert.Equal(1, pauses);
         Assert.Equal(1, await db.PortalMatchEvents.CountAsync(x => x.EventType == "doctrine_start_failed"));
+        var recovery = await db.PortalMaintenanceOperations.SingleAsync();
+        Assert.Equal("failed", recovery.Status);
+        Assert.Equal("operator_review", recovery.Phase);
+        Assert.Contains("matching reviewed", recovery.Summary);
     }
 
     [Fact]

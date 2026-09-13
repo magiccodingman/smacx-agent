@@ -72,7 +72,22 @@ public sealed class PortalMatchSupervisor(
         foreach (var operation in interruptedRecoveryOperations)
         {
             if (operation.Phase == "restarting_sovereigns")
+            {
+                var failedMatch = await database.PortalMatches.SingleOrDefaultAsync(
+                    item => item.MatchId == operation.MatchId && item.Status == "error",
+                    cancellationToken);
+                if (failedMatch is not null)
+                {
+                    operation.Status = "failed";
+                    operation.Phase = "operator_review";
+                    operation.Summary = failedMatch.LastError ??
+                        "Recovery stopped while restarting a managed AI.";
+                    operation.CanCancel = false;
+                    operation.CompletedAt = DateTimeOffset.UtcNow;
+                    operation.UpdatedAt = DateTimeOffset.UtcNow;
+                }
                 continue;
+            }
             operation.Status = "queued";
             operation.Phase = "reconciling_after_restart";
             operation.Summary = "The portal restarted during recovery. Native state is being reconciled and the operation will resume automatically.";
@@ -926,6 +941,20 @@ public sealed class PortalMatchSupervisor(
                 match.Status = "error";
                 match.LastError = exception.Message;
                 match.UpdatedAt = DateTimeOffset.UtcNow;
+                var failedRecovery = await database.PortalMaintenanceOperations
+                    .Where(item => item.MatchId == match.MatchId &&
+                        item.Kind == "capability_recovery" && item.Status == "running")
+                    .OrderByDescending(item => item.UpdatedAt)
+                    .FirstOrDefaultAsync(CancellationToken.None);
+                if (failedRecovery is not null)
+                {
+                    failedRecovery.Status = "failed";
+                    failedRecovery.Phase = "operator_review";
+                    failedRecovery.Summary = exception.Message;
+                    failedRecovery.CanCancel = false;
+                    failedRecovery.CompletedAt = DateTimeOffset.UtcNow;
+                    failedRecovery.UpdatedAt = DateTimeOffset.UtcNow;
+                }
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {
                     MatchId = match.MatchId, EventType = "doctrine_start_failed",
