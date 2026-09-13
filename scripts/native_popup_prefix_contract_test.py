@@ -10,6 +10,10 @@ assert 'No executable acknowledgement is advertised.' in source
 for field in ('base_mind_control_reported', 'native_resolution_pending_after_acknowledgement',
               'probe:mind_control_context', 'viewer_role'):
     assert field in source
+reviewed_choices = source[source.index('} else if (reviewed_information_popup(label)) {'):source.index('} else if (!strcmp(label, \"COMM\")', source.index('} else if (reviewed_information_popup(label)) {'))]
+for field in ('base_mind_control_reported', 'native_resolution_pending_after_acknowledgement',
+              'probe:mind_control_context', 'viewer_role'):
+    assert field in reviewed_choices
 for size, literal in re.findall(r'\.compare\(0,\s*(\d+),\s*"([^"]+)"\)', source):
     assert int(size) == len(literal), (size, literal)
 function = re.search(r'bool bribe_demand_label\(.*?\n}', source, re.S).group()

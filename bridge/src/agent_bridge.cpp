@@ -14335,6 +14335,21 @@ std::string semantic_choices_response(const std::string& request) {
                     << ",\"sunspots_active\":" << (duration > 0 ? "true" : "false")
                     << ",\"meaning\":\"The engine committed the shared sunspot duration before opening this local notice. Acknowledgement only closes presentation; use the current ecology field for subsequent decisions.\"}";
             }
+            if (!strcmp(label, "MINDCONTROL0") || !strcmp(label, "MINDCONTROL1")
+            || !strcmp(label, "MINDCONTROL2")) {
+                const char* roles[] = {"attacker", "former_owner", "observer"};
+                out << ",{\"id\":\"probe:mind_control_context\","
+                    "\"kind\":\"information\",\"event\":\"base_mind_control_reported\","
+                    "\"viewer_role\":" << json_string(roles[label[11] - '0'])
+                    << ",\"attacker_title\":" << json_string(agent_popup_parse_string(0))
+                    << ",\"attacker_leader_name\":" << json_string(agent_popup_parse_string(1))
+                    << ",\"attacker_faction_noun\":" << json_string(agent_popup_parse_string(2))
+                    << ",\"base_name\":" << json_string(agent_popup_parse_string(3))
+                    << ",\"former_owner_title\":" << json_string(agent_popup_parse_string(4))
+                    << ",\"former_owner_leader_name\":" << json_string(agent_popup_parse_string(5))
+                    << ",\"effect_status\":\"native_resolution_pending_after_acknowledgement\","
+                    "\"meaning\":\"The engine reports a successful base mind-control action. Dismissal offers no alternative and resumes the already-selected native action; verify resulting base ownership and nearby unit ownership afterward.\"}";
+            }
             if ((!strcmp(label, "CALLSCOUNCIL") || !strncmp(label, "COUNCILHOT", 10))
             && CouncilProposal[faction_id] >= 0 && CouncilProposal[faction_id] < MaxProposalNum) {
                 int proposal = CouncilProposal[faction_id];
@@ -14612,20 +14627,6 @@ std::string semantic_choices_response(const std::string& request) {
                     out << ",\"owned\":false";
                 }
                 out << '}';
-            }
-            if (label.size() == 12 && label.compare(0, 11, "MINDCONTROL") == 0) {
-                const char* roles[] = {"attacker", "former_owner", "observer"};
-                out << ",{\"id\":\"probe:mind_control_context\","
-                    "\"kind\":\"information\",\"event\":\"base_mind_control_reported\","
-                    "\"viewer_role\":" << json_string(roles[label[11] - '0'])
-                    << ",\"attacker_title\":" << json_string(agent_popup_parse_string(0))
-                    << ",\"attacker_leader_name\":" << json_string(agent_popup_parse_string(1))
-                    << ",\"attacker_faction_noun\":" << json_string(agent_popup_parse_string(2))
-                    << ",\"base_name\":" << json_string(agent_popup_parse_string(3))
-                    << ",\"former_owner_title\":" << json_string(agent_popup_parse_string(4))
-                    << ",\"former_owner_leader_name\":" << json_string(agent_popup_parse_string(5))
-                    << ",\"effect_status\":\"native_resolution_pending_after_acknowledgement\","
-                    "\"meaning\":\"The engine reports a successful base mind-control action. Dismissal offers no alternative and resumes the already-selected native action; verify resulting base ownership and nearby unit ownership afterward.\"}";
             }
             out << "]}";
         } else if (incoming_council_vote_offer_label(label)) {
