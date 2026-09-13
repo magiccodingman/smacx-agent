@@ -28,6 +28,10 @@ jobs:
           git checkout --detach FETCH_HEAD
       - name: Compile Python sources
         run: python3 -m compileall -q src harness
+      - name: Download pinned test dependencies
+        run: |
+          mkdir -p validation-artifact/wheels
+          python3 -m pip download --only-binary=:all: --python-version 3.13 --dest validation-artifact/wheels 'mcp==2.0.0'
       - name: Run directive contracts when present
         run: |
           if test -f scripts/unit_directive_test.py; then
