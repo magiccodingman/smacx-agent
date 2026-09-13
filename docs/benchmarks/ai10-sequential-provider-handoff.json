@@ -42,6 +42,7 @@
     "harness_continuation_contract_test": "passed",
     "installed_control_image_tests": "passed: sha256:e20c91fa1abfadbfc499006e42c86d6486e1461999a9291f42669edd638aac16",
     "deployed_recovery": "passed: paired checkpoint restored at turn 59 with two active sovereigns and no incident",
-    "original_failure_boundary": "passed: campaign advanced to turn 60/year 2160"
+    "original_failure_boundary": "passed: campaign advanced through turn 60 to turn 61/year 2161",
+    "paired_campaign": "AI - 9 restored at turn 67 with two active sovereigns and no active incident"
   }
 }

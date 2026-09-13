@@ -44,8 +44,10 @@ The rebuilt control/MCP image
 passed installed-image handoff, schema-guidance, and managed memory tests. AI - 10
 restored from its verified paired turn-59 checkpoint with both sovereigns active,
 then advanced through the original failure boundary to turn 60/year 2160 with no
-incident or run-verification error. AI - 9 was parked across deployment and
-returned at turn 67 with two active sovereigns and no incident.
+incident or run-verification error, then reached turn 61/year 2161. AI - 9 was
+parked across deployment. A manual reuse of its stopped run tripped the existing
+clean-yield guard; supported incident-bound paired recovery then returned it at
+turn 67 with fresh runs, two active sovereigns, and no active incident.
 
 Installed control-image tests pass. The real Hermes provider-capture test passes
 with rebuilt images, including actual streaming, terminal metadata, tool deltas,
