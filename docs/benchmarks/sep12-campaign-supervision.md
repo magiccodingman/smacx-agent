@@ -107,3 +107,5 @@ notification drain, decision-frame and managed-action contracts pass; the native
 bridge links successfully. Live dismissal, peer continuation and restarted
 four-hour stability remain pending deployment. See
 [sanitized evidence](turn37-production-upgrade-notice.json).
+
+The reviewed native delta changes the engine-source compatibility fingerprint to `5cc27f67c1c42e858b655d635199f4a1e9d98661ca08bc1621e923b4ee7df8d7`. The explicit review-time registry and doctrine integration contract pass. Recovery correctly rejected a new worker paired with the previous control-side registry; deployment must update both images before replay.

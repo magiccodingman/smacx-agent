@@ -28,7 +28,8 @@
     "decision_frame_contract": "passed",
     "managed_action_path_contract": "passed",
     "native_cross_build": "38 link/build steps completed; post-build artifact copy was unavailable in the isolated checkout and is a deployment step",
-    "live_effect_and_peer_continuation": "pending deployment and verified checkpoint recovery"
+    "live_effect_and_peer_continuation": "pending deployment and verified checkpoint recovery",
+    "engine_compatibility_registration": "reviewed bridge diff registered as 5cc27f67c1c42e858b655d635199f4a1e9d98661ca08bc1621e923b4ee7df8d7; doctrine integration contract passed"
   },
   "limitations": [
     "The notice proves that the engine reported an upgrade; current affected queues must be observed separately.",
