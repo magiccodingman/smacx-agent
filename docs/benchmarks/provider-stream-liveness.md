@@ -39,6 +39,14 @@ stops at that exact bound. Memory schemas also distinguish canonical journal
 events from observation cursors and durable actor IDs from agent/seat IDs, which
 addresses both rejected writes without weakening their scope checks.
 
+The rebuilt control/MCP image
+`sha256:e20c91fa1abfadbfc499006e42c86d6486e1461999a9291f42669edd638aac16`
+passed installed-image handoff, schema-guidance, and managed memory tests. AI - 10
+restored from its verified paired turn-59 checkpoint with both sovereigns active,
+then advanced through the original failure boundary to turn 60/year 2160 with no
+incident or run-verification error. AI - 9 was parked across deployment and
+returned at turn 67 with two active sovereigns and no incident.
+
 Installed control-image tests pass. The real Hermes provider-capture test passes
 with rebuilt images, including actual streaming, terminal metadata, tool deltas,
 authority heartbeat and clean authority-loss exit. The direct schema/prompt,
