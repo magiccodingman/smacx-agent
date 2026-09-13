@@ -1,0 +1,45 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "scenario": "ai10_turn59_sequential_provider_handoff",
+  "observed_failure": {
+    "turn": 59,
+    "year": 2159,
+    "stall_seconds": 451.339,
+    "generated_tokens_without_native_progress": 4934,
+    "api_calls_without_native_progress": 4,
+    "provider_request_at_stop": {
+      "phase": "streaming",
+      "seconds_since_submission": 17.281,
+      "seconds_since_last_content": 0.000001
+    },
+    "preceding_activity": [
+      "reviewed INTRO notification acknowledged",
+      "reviewed SIMULYOU notification acknowledged",
+      "decision frame read",
+      "attention lease acknowledged",
+      "memory claim rejected before write for noncanonical observation evidence",
+      "memory claim rejected before write for agent-seat actor reference",
+      "turn summary durably committed"
+    ],
+    "conclusion": "The model was active and recovering from bounded validation errors; the watchdog rejected a successor provider request while retaining the predecessor request latch."
+  },
+  "implemented_contract": {
+    "same_run_sequential_active_request_allowed": true,
+    "original_deliberation_episode_deadline_retained": true,
+    "native_progress_clock_reset": false,
+    "cross_run_handoff_allowed": false,
+    "terminal_or_failed_successor_allowed": false,
+    "actor_and_event_scope_guards_weakened": false
+  },
+  "validation": {
+    "provider_drain_window_test": "passed",
+    "provider_content_liveness_test": "passed",
+    "provider_request_state_test_in_harness_image": "passed",
+    "provider_audit_contract_test_in_harness_image": "passed",
+    "memory_contract_test_in_mcp_image": "passed",
+    "memory_reference_guidance_test": "passed",
+    "memory_faction_reference_test": "passed",
+    "harness_continuation_contract_test": "passed",
+    "deployed_recovery": "pending"
+  }
+}

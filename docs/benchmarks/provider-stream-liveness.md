@@ -11,20 +11,33 @@ count. Writes are throttled to once per second and scoped to the current run and
 request; terminal requests cannot be revived by late chunks.
 
 The existing no-gameplay-progress clock and repeated clean-yield checks remain.
-One request admitted before the gameplay deadline may finish while emitting
-content, bounded by 20 minutes from submission and a 120-second content-silence
-limit. The old 180-second transport grace remains for requests without content.
-A subsequent request cannot replace the latched request to gain more time.
+One deliberation episode admitted before the gameplay deadline may finish while
+emitting content, bounded by 20 minutes from its first provider submission and a
+120-second content-silence limit. The old 180-second transport grace remains for
+requests without content. A terminal request may hand off to the next active
+request in the same run, but the original episode deadline remains fixed.
 Completion has at most 30 seconds to dispatch an action, within the hard bound.
 None of these observations are counted as semantic gameplay progress. Stream
 silence, absolute generation-budget exhaustion and ordinary no-progress activity
 are distinguished in incident details. No prompt, game mechanic or DB change.
 
 Controlled tests cover the old transport boundary, continuous content beyond it,
-silence, absolute bound, replacement rejection, terminal state and unchanged
+silence, absolute bound, bounded sequential handoff, terminal state and unchanged
 native progress in actual supervisor reconciliation. Installed-image and live
 acceptance are recorded below after validation. This does not establish strategic
 quality or prove a long deliberation would eventually choose a useful action.
+
+## Turn 59 sequential-request correction
+
+AI - 10 was stopped after 451 seconds while its fourth post-progress provider
+request was actively streaming. It had acknowledged two reviewed notifications,
+received two non-mutating memory validation errors, then durably saved its turn
+summary. The watchdog still held the preceding request ID and rejected the live
+successor despite an unchanged hard deadline. Controlled reconciliation now
+proves sequential request handoff retains the first request's deadline and still
+stops at that exact bound. Memory schemas also distinguish canonical journal
+events from observation cursors and durable actor IDs from agent/seat IDs, which
+addresses both rejected writes without weakening their scope checks.
 
 Installed control-image tests pass. The real Hermes provider-capture test passes
 with rebuilt images, including actual streaming, terminal metadata, tool deltas,
