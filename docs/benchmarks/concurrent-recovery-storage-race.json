@@ -17,7 +17,7 @@
     "effect_verified": "pending deployed sequential recovery",
     "recovery_safe": "Both campaigns remained frozen and retained verified checkpoints."
   },
-  "additional_hardening": "A doctrine launch failure during capability recovery now marks the maintenance operation failed instead of leaving a permanent restarting_sovereigns operation.",
+  "additional_hardening": "A doctrine launch failure during capability recovery now marks the maintenance operation failed instead of leaving a permanent restarting_sovereigns operation; startup reconciliation also closes an already-latched error from an interrupted deployment.",
   "validation": {
     "control_plane_contract": "passed",
     "portal_doctrine_recovery_contract": "passed",
