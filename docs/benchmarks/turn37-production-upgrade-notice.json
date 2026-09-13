@@ -1,0 +1,38 @@
+{
+  "schema": "smacx.acceptance-evidence.v1",
+  "checkpoint": "turn37-production-upgrade-notice",
+  "incident": {
+    "match": "AI - 9 - Instruct",
+    "turn": 37,
+    "incident_id": "incident-fee690bf108c4b3fbe602fea1f7b7e87",
+    "gap_id": "gap-da2efaaf8e8643999edf9b5226c938a3",
+    "popup_label": "PRODUPGRADE"
+  },
+  "observed_chain": {
+    "observed": "The preserved native client reported phase=interaction and popup_label=PRODUPGRADE after its technology presentation and normal turn handoff.",
+    "represented": "Each fresh managed frame exposed acknowledge_popup as its sole executable choice.",
+    "provider_queryable": "The instruct sovereign identified PRODUPGRADE as the blocking interaction and selected the fresh advertised handle.",
+    "sovereign_expressible": true,
+    "executable_before_repair": false,
+    "failure": "The multiplayer execution allowlist rejected acknowledge_popup because PRODUPGRADE was supplied only by the generic zero-choice fallback and was absent from the reviewed label set.",
+    "recovery_safe": "The third identical nonprogressing choice opened the existing repetition circuit before native dispatch; both clients and the turn-36 paired checkpoint were preserved."
+  },
+  "review_basis": {
+    "stock_script": "Script.txt PRODUPGRADE contains a completed-outcome sentence and no alternatives; ASKPRODUPGRADE is the separate Yes/No/Yes to ALL prompt.",
+    "bounded_change": "PRODUPGRADE is added as one exact reviewed information label. It carries previous/replacement prototype context and is admitted by the existing local-presentation multiplayer guard. ASKPRODUPGRADE remains excluded.",
+    "family_invariant": "An unknown zero-choice popup in multiplayer no longer advertises acknowledge_popup when the same command would be rejected by the allowlist; it returns an explicit unsupported capability record instead."
+  },
+  "validation": {
+    "compiled_label_predicate": "passed",
+    "automatic_notification_capture_before_dismiss": "passed",
+    "decision_frame_contract": "passed",
+    "managed_action_path_contract": "passed",
+    "native_cross_build": "38 link/build steps completed; post-build artifact copy was unavailable in the isolated checkout and is a deployment step",
+    "live_effect_and_peer_continuation": "pending deployment and verified checkpoint recovery"
+  },
+  "limitations": [
+    "The notice proves that the engine reported an upgrade; current affected queues must be observed separately.",
+    "No generic one-button multiplayer popup is inferred safe from shape alone.",
+    "The four-hour stability counter resets after this repair."
+  ]
+}

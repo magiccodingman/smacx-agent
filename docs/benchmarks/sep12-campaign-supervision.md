@@ -85,3 +85,25 @@ incidents, and two healthy worker/MCP pairs. Each match has one live sovereign
 process while its peer is legitimately suspended outside the current native
 turn. Available root storage is 151 GB. Healthy samples: 1 of 4; this is one
 bounded liveness sample, not sustained-stability acceptance.
+
+## Turn-37 production-upgrade notice
+
+AI9 advanced to turn 37 before stopping safely on three fresh
+`acknowledge_popup` choices for `PRODUPGRADE`. The decision catalog advertised
+the choice because the active BasePop had no alternatives, while the multiplayer
+execution guard rejected it because the exact label had never been reviewed.
+The model copied valid fresh handles; the contradiction was entirely inside the
+managed contract. The third attempt opened the repetition circuit before native
+dispatch and preserved both clients plus the paired turn-36 checkpoint.
+
+Stock `Script.txt` states that production was already upgraded and supplies no
+choices. `ASKPRODUPGRADE` is a distinct Yes/No/Yes-to-ALL policy prompt. The
+repair therefore admits only exact `PRODUPGRADE`, surfaces the old and replacement
+prototype names as a reported-complete event, and keeps the consequential prompt
+excluded. It also closes the broader contract hole: an unknown zero-choice popup
+in multiplayer now exposes an unsupported capability record instead of an
+executable command that the allowlist must reject. Compiled predicates, bounded
+notification drain, decision-frame and managed-action contracts pass; the native
+bridge links successfully. Live dismissal, peer continuation and restarted
+four-hour stability remain pending deployment. See
+[sanitized evidence](turn37-production-upgrade-notice.json).
