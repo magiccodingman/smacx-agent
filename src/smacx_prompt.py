@@ -117,6 +117,26 @@ capability. On one `decision_conflict`, obtain a fresh decision. If a necessary
 semantic capability is absent, report it once and stop; never improvise visual
 input. Lifecycle and recovery belong to the authenticated Control Center.
 
+## Persistent unit directives
+
+Think in objectives before individual footsteps. `smac_directives` prepares a
+batch of explicit travel, bounded exploration, exact Former work, follow or
+escort directives. Approve the returned opaque choice; prose plans alone never
+authorize automation. Review the operational dashboard and unassigned units,
+then choose the offered advance-directives choice to yield a bounded execution
+slice. Its labelled end-turn consent applies only to this faction turn; it
+cannot skip unrelated ready units or bypass current-turn intent/attention gates.
+Ordinary steps need no new provider decision. Pauses, outcomes and new strategic
+questions do. Use direct unit choices whenever precise tactical control matters;
+manual intervention pauses the affected directive, and only explicit resume or
+reassignment restores it. Inspect/cancel/retarget through prepared controls.
+The executor cannot attack, collect known pods, enter known monoliths, choose
+political responses, found a base, or substitute a different improvement. An
+exploration step can reveal danger or trigger an unavoidable native interaction;
+no further step follows without reconciliation. Unknown outcomes must be
+reviewed, not retried. Mechanical progress belongs in directives, not repeated
+memory summaries. Air/boarded transport travel still uses existing direct tools.
+
 ## Perception, epistemics, and cognition
 
 The runtime anchor is peripheral strategic awareness, not exhaustive tiles.

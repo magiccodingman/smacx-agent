@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import inspect
+import sys
+from functools import wraps
+from contextvars import ContextVar
 import hashlib
 import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -65,10 +68,24 @@ from smacx_specialists import (
 )
 
 
+# Synchronous tools may be dispatched by the SDK on different threads. A
+# directive slice and a manual command must never race. This is not a worker;
+# all native mutation still requires the current sovereign gameplay lease.
+GAMEPLAY_TOOL_LOCK = threading.RLock()
+DIRECTIVE_NATIVE_DISPATCH = ContextVar("smacx_directive_native_dispatch", default=False)
+
+
 class TracedMCPServer(StrictMCPServer):
     def tool(self, *args, **kwargs):
         register = super().tool(*args, **kwargs)
-        return lambda function: register(trace_managed_tool(function))
+        def decorate(function):
+            traced = trace_managed_tool(function)
+            @wraps(function)
+            def serialized(*args, **kwargs):
+                with GAMEPLAY_TOOL_LOCK:
+                    return traced(*args, **kwargs)
+            return register(serialized)
+        return decorate
 
 
 mcp = TracedMCPServer(
@@ -86,7 +103,7 @@ mcp = TracedMCPServer(
         "Execute only with smac_execute_choice; its bounded rebase owns revision churn. "
         "Observations are restricted to the current human faction's legitimate perspective."
     ),
-    version="0.48.0",
+    version="0.49.0",
 )
 
 GAP_LOG = Path(os.environ.get(
@@ -3036,6 +3053,15 @@ def smac_decision(
     finish_ready_units: bool = False,
     detail: Literal["compact", "full"] = "compact",
 ) -> dict:
+    from smacx_directive_api import attach_frame
+    frame = _decision_with_reviewed_notifications(own_unit_ref, target_location_ref,
+        target_unit_ref, finish_ready_units, detail)
+    return attach_frame(sys.modules[__name__], frame,
+                        offer=not own_unit_ref and not finish_ready_units)
+
+
+def _decision_with_reviewed_notifications(own_unit_ref="", target_location_ref="",
+        target_unit_ref="", finish_ready_units=False, detail="compact"):
     notices = []
     seen = set()
     for _ in range(5):
@@ -3102,6 +3128,25 @@ def smac_decision(
             return {"ok": bool(receipt.get("ok")), "automatic_notifications": notices,
                 "required_next": {"tool": "smac_decision", "reason": "Observe current state; dismissal was not verified. Do not replay the old handle."}}
     return frame
+
+
+@mcp.tool(description=(
+    "Prepare typed persistent unit directives or inspect their durable progress. "
+    "Preparation does not execute or assign; approve its one-use choice through smac_execute_choice. "
+    "request_json is an object: action=assign with directives=[{kind:travel|explore|work|follow|escort, "
+    "actor_ref,...}], optionally replace_existing=true; pause/cancel/resume with directive_ids; "
+    "or advance with max_steps (1..128) and explicit end_turn (this turn only). "
+    "Travel/work/escort require target_ref; work requires work=farm|mine|solar_collector|forest|road|sensor|remove_fungus; "
+    "escort requires escort_ref. Follow requires a current target_ref and optional follow_distance=0..4. "
+    "Explore requires exactly one origin_ref or issued scope_ref, radius=0..16, optional direction=N|NE|E|SE|S|SW|W|NW. "
+    "Common fields: purpose, linked_plan_id, review_after_turns=1..100, policy overrides "
+    "threat_radius=0..8, foreign_territory=avoid|pact, detour_budget_turns=0..20, max_idle_turns=1..20, "
+    "interrupt_on_new_contact=true|false. Only unboarded land/sea actors are currently supported. "
+    "Direct manual unit commands pause their directives. Native dialogs and uncertain actions never imply permission to continue."))
+def smac_directives(action: Literal["prepare", "status"] = "status", request_json: str = "",
+                    directive_id: str = "", offset: int = 0, limit: int = 8) -> dict:
+    from smacx_directive_api import tool
+    return tool(sys.modules[__name__], action, request_json, directive_id, offset, limit)
 
 
 def _decision_frame_once(
@@ -3806,7 +3851,7 @@ def smac_command(
     if reconciliation_block:
         return reconciliation_block
     result = _call("semantic_command", **command_arguments)
-    if result.get("error", {}).get("code") == "stale_state":
+    if result.get("error", {}).get("code") == "stale_state" and not DIRECTIVE_NATIVE_DISPATCH.get():
         refreshed = _fresh_unit_choice_for_stale_command(
             command, unit_id, target_tile_id, target_unit_id,
         )
@@ -4157,7 +4202,10 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "", attent
             "This decision is consumed, including after rejection. Obtain a fresh frame."
         )}
 
-    response = _attach_post_action_decision(response, key)
+    if response.get("directive_generation") is not None and response.get("ok"):
+        response["execution_status"] = "completed"
+    if "post_action_decision" not in response:
+        response = _attach_post_action_decision(response, key)
 
     # A failure budget is deliberately independent of target and decision IDs.
     # Success resets this submission budget; unchanged-state success loops are
@@ -4208,7 +4256,8 @@ def smac_execute_choice(decision_id: str, choice_id: str, text: str = "", attent
     return response
 
 
-def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> dict:
+def _execute_choice_once(decision_id: str, choice_id: str, text: str = "", *,
+                         directive_execution: bool = False, allow_rebase: bool = True) -> dict:
     authority = _sovereign_gameplay_gate("Choice execution")
     if authority:
         return authority
@@ -4283,7 +4332,8 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
             }
         # Reconciliation is a pre-dispatch review, not a failed native attempt.
         # Keep the choice available and exclude it from unchanged-action counts.
-        reconciliation_block = _turn_reconciliation_gate(
+        directive_control = choice.get("command") == "directive_control"
+        reconciliation_block = None if directive_control else _turn_reconciliation_gate(
             _command_payload(choice, dict(decision.get("identity") or {})))
         if reconciliation_block:
             return {**reconciliation_block, "decision_id": decision_id, "choice_id": choice_id,
@@ -4295,6 +4345,15 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
         choice_label = str(decision.get("choice_labels", {}).get(choice_id) or "Selected choice")
         selected_receipt = {"choice_id": choice_id, "label": choice_label,
                             **decision.get("receipt_subjects", {}).get(choice_id, {})}
+
+    if directive_control:
+        from smacx_directive_api import approve
+        return approve(sys.modules[__name__], decision, choice_id, decision_id)
+    if not directive_execution:
+        from smacx_directive_api import manual_override
+        override = manual_override(sys.modules[__name__], decision, selected_receipt)
+        if override is not None:
+            return override
 
     from smacx_diagnostics import record as diagnostic_record, INVOCATION
     diagnostic_record("choice_selected", {"choice": choice, "label": choice_label,
@@ -4368,7 +4427,7 @@ def _execute_choice_once(decision_id: str, choice_id: str, text: str = "") -> di
     result = smac_command(**_command_payload(choice, identity))
     error = result.get("error") if isinstance(result, dict) else None
     error_code = error.get("code") if isinstance(error, dict) else error
-    if error_code != "stale_state":
+    if error_code != "stale_state" or not allow_rebase:
         response = {
             **result,
             "decision_id": decision_id,

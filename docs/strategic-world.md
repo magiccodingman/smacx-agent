@@ -354,6 +354,18 @@ invented, and the platform never selects a winning plan. The request-only HUD
 keeps counts and bounded exceptions; incomplete intent coverage cannot become
 an exact unassigned-unit count.
 
+## Persistent unit directives
+
+Plans remain sovereign intent; an explicitly approved unit directive grants
+bounded mechanical execution, not strategy inferred from plan prose. The new
+`smac_directives` tool prepares batch assignments and controls; the existing
+opaque executor commits them. `smac_decision` exposes an operational dashboard
+and an explicit one-turn advance choice. Routine footsteps do not require a
+provider response, while tactical commands remain available and pause the
+affected directive. Directive state and attention outbox follow the canonical
+journal/checkpoint timeline. See [Unit directives](unit-directives.md) for the
+supported objectives, execution boundaries, API examples and validation.
+
 ## Attention and communication
 
 Attention is at-least-once and uses a sequence independent from the observation

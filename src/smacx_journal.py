@@ -680,6 +680,7 @@ class CampaignJournal:
             "project_reports": {}, "plan_dependency_health": {},
             "world_observations": [], "world_continuity": "complete",
             "world_observation_cursor": 0, "observed_faction_identities": {},
+            "unit_directives": {}, "directive_generation": 0,
         }
 
     def _materialize_timeline(
@@ -725,7 +726,18 @@ class CampaignJournal:
         if not isinstance(payload, dict):
             return
         kind = str(event.get("event_type") or "")
-        if kind == "attention.plan_dependency_state":
+        if kind == "directive.transaction":
+            # Canonical directive state follows the same timeline/checkpoint
+            # prefix as cognition and world history; no second persistent DB.
+            state.setdefault("unit_directives", {}).update({
+                row["directive_id"]: row for row in payload.get("updates", [])
+                if isinstance(row, dict) and isinstance(row.get("directive_id"), str)})
+            state["directive_generation"] = int(payload["generation"])
+        elif kind == "directive.notification_delivered":
+            row = state.setdefault("unit_directives", {}).get(payload.get("directive_id"))
+            if row and (row.get("notice") or {}).get("key") == payload.get("key"):
+                row["delivered_notice"] = payload["key"]
+        elif kind == "attention.plan_dependency_state":
             state["plan_dependency_health"] = dict(payload.get("states") or {})
         elif kind == "memory.fact":
             state["facts"][str(payload.get("key") or event["event_id"])] = payload

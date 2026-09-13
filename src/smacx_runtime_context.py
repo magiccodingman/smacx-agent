@@ -760,6 +760,18 @@ class RuntimeContextAssembler:
             review = order_review(recent_actions, projection)
             if review["items"]:
                 payload["operational_review"]["order_followthrough"] = review
+        if journal is not None:
+            from smacx_directives import DirectiveStore
+            directives = DirectiveStore(journal, self.scope, projection_identity.timeline_id).dashboard(limit=4)
+            if directives["active_count"] or directives["recent_outcomes"]:
+                # Account for this component before allocating the anchor, and
+                # retain counts/query handles when the item budget is exhausted.
+                while estimate_tokens(directives) > 1400 and directives["items"]:
+                    directives["items"].pop()
+                    directives["omitted_count"] += 1
+                if estimate_tokens(directives) > 1400:
+                    directives["recent_outcomes"] = []
+                payload["unit_directives"] = directives
         non_anchor_tokens = estimate_tokens(payload)
         anchor_cap = min(
             budgets["anchor"],
@@ -836,6 +848,7 @@ class RuntimeContextAssembler:
             "attention": estimate_tokens(payload["attention"]),
             "cognition": estimate_tokens(cognition),
             "operations": estimate_tokens(payload["operations"]),
+            "unit_directives": estimate_tokens(payload.get("unit_directives", {})),
             "interpretive_recall": estimate_tokens(recall_context or {}),
         }
         payload["budget"] = {

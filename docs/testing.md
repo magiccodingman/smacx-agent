@@ -697,3 +697,12 @@ native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).
 Provider liveness: `PYTHONPATH=src:scripts python3 scripts/provider_drain_window_test.py`
 and `PYTHONPATH=src python3 scripts/provider_content_liveness_test.py` cover the
 bounded content watermark, silence, replacement, completion and hard deadline.
+
+## Persistent unit directives
+
+`python scripts/unit_directive_validation.py` runs the directive contracts and
+affected regressions without a native game or provider. The pinned `mcp==2.0.0`
+dependency is required. Results and individual logs default to
+`runtime/directive-validation`; use `--quick` for only the three new suites.
+See [directive acceptance](benchmarks/unit-directives.md) for the automated
+evidence and separate owner-run gameplay checks.

@@ -49,7 +49,7 @@ _HANDOFF_SECTION_WORDS = 19
 _STATE_TOOL_NAMES = frozenset({
     "smac_decision", "smac_wait", "smac_snapshot", "smac_observe",
 })
-_QUERY_TOOL_NAMES = frozenset({"smac_choices", "smac_world", "smac_investigate"})
+_QUERY_TOOL_NAMES = frozenset({"smac_choices", "smac_world", "smac_investigate", "smac_directives"})
 _DISPOSABLE_TOOL_NAMES = frozenset({
     *_STATE_TOOL_NAMES, *_QUERY_TOOL_NAMES, "smac_execute_choice", "smac_match_briefing", "smac_list",
     "smac_memory", "smac_memory_update", "smac_notebook",
@@ -766,7 +766,7 @@ def _install() -> None:
                         nested = (result.get(container) or {}).get("frame")
                         if isinstance(nested, dict) and isinstance(nested.get("decision_id"), str):
                             decision_rows.setdefault(nested["decision_id"], []).append((index, container))
-                if name in {"smac_decision", "smac_choices"} and isinstance(result, dict) \
+                if name in {"smac_decision", "smac_choices", "smac_directives"} and isinstance(result, dict) \
                         and isinstance(result.get("decision_id"), str):
                     decision_rows.setdefault(result["decision_id"], []).append((index, ""))
                 elif name == "smac_execute_choice" and isinstance(result, dict) \
