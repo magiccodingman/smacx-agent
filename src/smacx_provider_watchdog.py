@@ -20,23 +20,40 @@ def provider_drain_window(*, run_id, now, progress_since, stall_seconds, request
     earliest = progress_since if progress_observed_after is None else progress_observed_after
     if type(earliest) not in (int, float) or not isfinite(earliest) or earliest > progress_since:
         return False, prior
-    if not earliest <= started <= deadline or not started <= observed <= now:
+    if started < earliest or not started <= observed <= now:
         return False, prior
     identifier, phase = request.get('request_id'), request.get('phase')
     if not isinstance(identifier, str) or not identifier or len(identifier) > 128:
         return False, prior
     if prior is None:
-        if phase not in {'submitted', 'headers', 'streaming'} or now < deadline:
+        if started > deadline or phase not in {'submitted', 'headers', 'streaming'} or now < deadline:
             return False, None
         prior = {'request_id': identifier, 'base_deadline': deadline,
-                 'hard_deadline': deadline + 180, 'started_unix': started}
-    if identifier != prior['request_id'] or started != prior['started_unix']:
-        return False, prior
-    # Content liveness can extend this one request, never reset gameplay progress.
-    # 20 minutes from submission is absolute; keepalives cannot buy time.
+                 'hard_deadline': deadline + 180, 'started_unix': started,
+                 'episode_started_unix': started}
+    elif identifier != prior['request_id'] or started != prior['started_unix']:
+        # Hermes admits only one provider request at a time. A different
+        # request from the same run therefore proves that the latched request
+        # reached a terminal boundary. Permit the active continuation while
+        # retaining the original episode's absolute deadline: tool dispatch
+        # cannot buy another generation window.
+        episode_started = prior.get('episode_started_unix', prior.get('started_unix'))
+        hard_deadline = prior.get('hard_deadline')
+        if (phase not in {'submitted', 'headers', 'streaming'}
+                or type(episode_started) not in (int, float) or not isfinite(episode_started)
+                or type(hard_deadline) not in (int, float) or not isfinite(hard_deadline)
+                or started <= prior.get('started_unix', episode_started)
+                or started > observed or now >= hard_deadline):
+            return False, prior
+        prior = {**prior, 'request_id': identifier, 'started_unix': started,
+                 'episode_started_unix': episode_started}
+    # Content liveness can extend this episode, never reset gameplay progress.
+    # 20 minutes from its first submission is absolute; keepalives and later
+    # request handoffs cannot buy time.
     content = request.get('last_content_unix')
     if type(content) in (int, float) and isfinite(content) and started <= content <= observed:
-        prior = {**prior, 'hard_deadline': max(deadline + 180, started + PROVIDER_GENERATION_SECONDS),
+        episode_started = prior.get('episode_started_unix', started)
+        prior = {**prior, 'hard_deadline': max(deadline + 180, episode_started + PROVIDER_GENERATION_SECONDS),
                  'last_content_unix': content}
         if phase == 'streaming' and now - content >= 120:
             return False, {**prior, 'stop_reason': 'provider_stream_silent'}

@@ -1,0 +1,71 @@
+{
+  "checkpoint": "multiplayer_sunspots_notice",
+  "observed": {
+    "campaign": "AI9 Instruct",
+    "turn": 70,
+    "popup_label": "SUNSPOTS",
+    "sunspot_duration": 12,
+    "managed_choices_before": 0,
+    "safe_incident": "incident-b30654cb207e4d7bb688f1ee27a7558c",
+    "verified_checkpoint_available": true
+  },
+  "represented": {
+    "events": [
+      "sunspot_activity_started",
+      "sunspot_activity_ended"
+    ],
+    "native_field": "sunspot_duration",
+    "active_derivation": "sunspot_duration > 0",
+    "acknowledgement_scope": "local presentation only",
+    "effect_status": "reported_complete_by_native_notice"
+  },
+  "native_replay": {
+    "save_sha256": "79f66aecd5c976410f88e2d14758f5729fbaae885a2020f68716233afa91efb7",
+    "native_clients": 2,
+    "sunspots": {
+      "acknowledging_clients": 2,
+      "dismissal_left_popup_stack": true,
+      "replica_durations": [12, 12]
+    },
+    "no_more_spots": {
+      "acknowledging_clients": 2,
+      "dismissal_left_popup_stack": true,
+      "replica_durations": [0, 0]
+    }
+  },
+  "tests": {
+    "compiled_popup_label_contract": "pass",
+    "reviewed_engine_fingerprint": "22c3175d6cfaed24aeaeeee31613e6d7766a252484527be01189345a32a01107",
+    "native_bridge_cross_build": "pass",
+    "exact_two_client_native_replay": "pass",
+    "managed_action_path_contract": "pass",
+    "decision_recovery": "pass",
+    "opaque_choice_execution": "pass",
+    "automatic_notification_drain": "pass",
+    "doctrine_integration": "pass"
+  },
+  "limits": {
+    "public_deployment": "pass",
+    "campaign_recovery": "pass for AI9",
+    "post_recovery_progression": "original SUNSPOTS boundary crossed; sustained progression pending",
+    "production_no_more_spots_recurrence": "pending"
+  },
+  "deployment": {
+    "control_image": "sha256:f7eaf6ffc2b333ea3550e5fc6acbc65248c1e5ca782c7c6245c86060c794be0f",
+    "worker_image": "sha256:09d40c9c62e5325737dc52a1ad5b38ec487c99c526a7970b33c514624de6a297",
+    "prepared_worker": "smacx-agent-prepared:31f20d357478-b829e813a01e-09d40c9c62e5",
+    "ai9": {
+      "restored_turn": 69,
+      "observed_turn": 70,
+      "production_perspectives_acknowledging": 2,
+      "context_event": "sunspot_activity_started",
+      "sunspot_duration": 12,
+      "choice_id": "choice-01",
+      "command": "acknowledge_popup",
+      "checkpoint": "checkpoint-3e6d121b2022495e8968517184a8a1f7",
+      "checkpoint_status": "save_verified",
+      "active_incidents": 0,
+      "active_sovereigns": 2
+    }
+  }
+}

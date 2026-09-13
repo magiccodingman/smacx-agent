@@ -30,10 +30,13 @@ def array(items):
 
 KEY = text(128, pattern=KEY_PATTERN.pattern)
 REF = text(96, pattern=ID_PATTERN.pattern)
-ACTOR = text(160, pattern=r"^(?:faction-[0-9]+|[A-Za-z0-9_-]{8,96})$")
+ACTOR = text(160, pattern=r"^(?:faction-[0-9]+|actor-[A-Za-z0-9_-]{2,90})$",
+    description="Use an observed faction-N reference or a durable actor-* ID returned by memory. Agent, seat, session, unit and base references are not actor IDs.")
 CONFIDENCE = {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.5}
 TURN = {"type": "integer", "minimum": 0}
-OPTIONAL_EVENT = {**REF, "nullable": True, "default": None}
+OPTIONAL_EVENT = {**REF, "nullable": True, "default": None,
+    "description": "Optional canonical journal-* event ID returned by campaign history or an action receipt. Observation cursors and observation-* IDs are not journal evidence IDs; omit this field when no canonical event is being cited."}
+OPTIONAL_RECORD_REF = {**REF, "nullable": True, "default": None}
 RECONCILIATION = obj({"turn": TURN, "disposition": text(enum=["deferred", "blocked"]),
                       "reason": text(600, minLength=1)}, ("turn", "disposition", "reason"))
 WINDOW = obj({"start_turn": TURN, "end_turn": TURN}, ("start_turn", "end_turn"))
@@ -73,7 +76,7 @@ SCHEMAS = {
         "priority": {"type": "integer", "minimum": 0, "maximum": 100, "default": 50},
         "trigger": INTENT, "due_turn": {**TURN, "nullable": True, "default": None},
         "due_year": {**TURN, "nullable": True, "default": None},
-        "parent_goal_id": OPTIONAL_EVENT, "source_event_id": OPTIONAL_EVENT}, ("title", "description")),
+        "parent_goal_id": OPTIONAL_RECORD_REF, "source_event_id": OPTIONAL_EVENT}, ("title", "description")),
     "plan": obj({"plan_key": KEY, "title": text(200, minLength=1), "objective": text(minLength=1),
         "target_refs": array(REF), "participants": array(PARTICIPANT), "timing": INTENT,
         "dependencies": array(REF), "intended_role": text(1000, default=""),
