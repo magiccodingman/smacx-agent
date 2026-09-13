@@ -13,6 +13,7 @@ import copy
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 import re
 import threading
@@ -49,7 +50,7 @@ _HANDOFF_SECTION_WORDS = 19
 _STATE_TOOL_NAMES = frozenset({
     "smac_decision", "smac_wait", "smac_snapshot", "smac_observe",
 })
-_QUERY_TOOL_NAMES = frozenset({"smac_choices", "smac_world", "smac_investigate"})
+_QUERY_TOOL_NAMES = frozenset({"smac_choices", "smac_world", "smac_investigate", "smac_directives"})
 _DISPOSABLE_TOOL_NAMES = frozenset({
     *_STATE_TOOL_NAMES, *_QUERY_TOOL_NAMES, "smac_execute_choice", "smac_match_briefing", "smac_list",
     "smac_memory", "smac_memory_update", "smac_notebook",
@@ -662,6 +663,26 @@ def _install() -> None:
     # durable Hermes transcript.
     import run_agent  # type: ignore
 
+    # Hermes intentionally returns a soft, zero-exit turn when context
+    # compression is already owned by another path. Expose that host-owned
+    # condition to the supervisor as a distinct machine marker; ordinary model
+    # text is never trusted to classify an autonomous yield.
+    try:
+        import agent.conversation_loop as conversation_loop  # type: ignore
+    except ModuleNotFoundError:
+        conversation_loop = None
+    if conversation_loop is not None:
+        original_compression_deferred_result = conversation_loop._compression_deferred_result
+
+        def marked_compression_deferred_result(*args, **kwargs):  # noqa: ANN002,ANN003
+            result = original_compression_deferred_result(*args, **kwargs)
+            reason = "compression_transient_block" \
+                if kwargs.get("reason") == "transient_block" else "compression_lock_contended"
+            print(f"SMACX_RUNTIME_DEFER {reason}", file=sys.stderr, flush=True)
+            return result
+
+        conversation_loop._compression_deferred_result = marked_compression_deferred_result
+
     if os.environ.get("SMACX_DIAGNOSTICS_ENABLED") == "1":
         from smacx_diagnostics import DiagnosticWriter, install_hermes_capture, install_httpx_capture
         diagnostic_writer = DiagnosticWriter(
@@ -766,7 +787,7 @@ def _install() -> None:
                         nested = (result.get(container) or {}).get("frame")
                         if isinstance(nested, dict) and isinstance(nested.get("decision_id"), str):
                             decision_rows.setdefault(nested["decision_id"], []).append((index, container))
-                if name in {"smac_decision", "smac_choices"} and isinstance(result, dict) \
+                if name in {"smac_decision", "smac_choices", "smac_directives"} and isinstance(result, dict) \
                         and isinstance(result.get("decision_id"), str):
                     decision_rows.setdefault(result["decision_id"], []).append((index, ""))
                 elif name == "smac_execute_choice" and isinstance(result, dict) \

@@ -86,7 +86,9 @@ class ContractHarnessManager(HarnessManager):
         self.docker = type("FakeDocker", (), {
             "stop_container": lambda _self, _name, timeout=10: None,
             "remove_container": lambda _self, _name: None,
+            "container_logs": lambda _self, _name, tail=80: self.container_logs,
         })()
+        self.container_logs = ""
 
     def status(self, _run_id: str) -> dict:
         return {"ok": True, "run": self.control.run, "observed": {
@@ -216,6 +218,21 @@ def advancing_yield_resets_only_completed_episode_window() -> None:
 
 
 def main() -> int:
+    defer_control, defer_worker = FakeControl(), FakeWorkerManager()
+    defer_manager = ContractHarnessManager(defer_control, defer_worker)
+    defer_control.run["metadata"]["consecutive_clean_yields_without_progress"] = 2
+    defer_manager.container_logs = (
+        "SMACX_RUNTIME_DEFER compression_lock_contended\n"
+    )
+    deferred = defer_manager.reconcile_once()
+    assert deferred["operator_required"] == 0 and defer_manager.start_count == 0
+    assert defer_control.run["status"] == "restarting"
+    assert defer_control.run["metadata"]["consecutive_clean_yields_without_progress"] == 0
+    defer_control.run["metadata"]["clean_exit_defer_until_unix"] = time.time() - 1
+    resumed = defer_manager.reconcile_once()
+    assert resumed["continued"] == 1 and defer_manager.start_count == 1
+    assert not defer_control.incidents and not defer_worker.quarantines
+
     advancing_yield_resets_only_completed_episode_window()
     reasoning_detail_is_not_extra_output()
     fresh_progress_uses_fresh_usage_baseline()

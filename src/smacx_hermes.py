@@ -45,7 +45,7 @@ COMMUNICATION_MCP_TOOLS = (
     "smac_investigate",
 )
 GAMEPLAY_MCP_TOOLS = (*COMMUNICATION_MCP_TOOLS,
-    "smac_decision", "smac_choices", "smac_execute_choice", "smac_wait",
+    "smac_decision", "smac_choices", "smac_execute_choice", "smac_directives", "smac_wait",
     "smac_report_capability_gap", "smac_match_briefing")
 
 
