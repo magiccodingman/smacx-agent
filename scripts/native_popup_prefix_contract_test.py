@@ -7,6 +7,9 @@ import tempfile
 source = (Path(__file__).resolve().parents[1] / 'bridge/src/agent_bridge.cpp').read_text()
 assert 'popup:unvalidated_information_notice' in source
 assert 'No executable acknowledgement is advertised.' in source
+for field in ('base_mind_control_reported', 'native_resolution_pending_after_acknowledgement',
+              'probe:mind_control_context', 'viewer_role'):
+    assert field in source
 for size, literal in re.findall(r'\.compare\(0,\s*(\d+),\s*"([^"]+)"\)', source):
     assert int(size) == len(literal), (size, literal)
 function = re.search(r'bool bribe_demand_label\(.*?\n}', source, re.S).group()
@@ -14,9 +17,9 @@ information = re.search(r'bool reviewed_information_popup\(.*?\n}', source, re.S
 liberation = re.search(r'label\.compare\(0, sizeof\("LIBERATEBASE"\).*?== 0', source).group()
 program = '#include <string>\n#include <cassert>\n' + function + information + '''
 int main() {
- for (auto label : {"SPORESLAUNCHED", "SPOREFOREST", "PRODUPGRADE", "PERIHELION", "PERIHELIONENDS", "SUNSPOTS", "NOMORESPOTS"})
+ for (auto label : {"SPORESLAUNCHED", "SPOREFOREST", "PRODUPGRADE", "PERIHELION", "PERIHELIONENDS", "SUNSPOTS", "NOMORESPOTS", "MINDCONTROL0", "MINDCONTROL1", "MINDCONTROL2"})
   assert(reviewed_information_popup(label));
- for (auto label : {"SPORESLAUNCHEDX", "SPORE", "SPOREFOREST0", "MONOLITH", "WEASELOUT", "ASKPRODUPGRADE"})
+ for (auto label : {"SPORESLAUNCHEDX", "SPORE", "SPOREFOREST0", "MONOLITH", "WEASELOUT", "ASKPRODUPGRADE", "MINDCONTROL", "MINDCONTROL3", "MINDCONTROL10"})
   assert(!reviewed_information_popup(label));
  for (auto label : {"DEMANDBRIBE0", "DEMANDBRIBE1", "DEMANDBRIBE12"})
   assert(bribe_demand_label(label));

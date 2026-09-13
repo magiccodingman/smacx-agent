@@ -4094,6 +4094,13 @@ bool reviewed_information_popup(const std::string& label) {
     bool resolved_probe_notice = label == "DETECTINFILTRATE" || label == "TOOKENERGY"
         || label == "TOOKNOENERGY" || label == "DECIPHERED1" || label == "STOLEMAP1"
         || label == "PRODVIRUS1" || label == "FACVIRUS1" || label == "GENETICWARFARE1";
+    // probe.cpp chooses MINDCONTROL0/1/2 only from the observing client's
+    // relationship to an already-selected successful probe action. popp_2's
+    // return value is ignored; native ownership/unit transfer continues after
+    // this one-button report is dismissed.
+    bool resolved_mind_control_notice = label.size() == 12
+        && label.compare(0, 11, "MINDCONTROL") == 0
+        && label[11] >= '0' && label[11] <= '2';
     bool resolved_project_notice = label == "BEGINPROJECT" || label == "CHANGEPROJECT"
         || label == "HALTPROJECT" || label == "SURVIVEPROJECT" || label == "DONEPROJECT"
         || label == "SEIZEPROJECT" || label == "LOSEPROJECT";
@@ -4185,7 +4192,8 @@ bool reviewed_information_popup(const std::string& label) {
         || label == "COUNCILHOTVETO" || label == "COUNCILHOTGOVWIN"
         || label == "COUNCILHOTGOVLOSE" || label == "COUNCILHOTGOVNONE"
         || refused_demand_notice || vendetta_statement || resolved_unity_pod || resolved_technology_notice
-        || resolved_probe_notice || resolved_project_notice || resolved_base_capture_notice
+        || resolved_probe_notice || resolved_mind_control_notice
+        || resolved_project_notice || resolved_base_capture_notice
         || resolved_elimination_notice || resolved_diplomacy_notice
         || resolved_commerce_notice || resolved_base_status || resolved_production_notice;
 }
@@ -14604,6 +14612,20 @@ std::string semantic_choices_response(const std::string& request) {
                     out << ",\"owned\":false";
                 }
                 out << '}';
+            }
+            if (label.size() == 12 && label.compare(0, 11, "MINDCONTROL") == 0) {
+                const char* roles[] = {"attacker", "former_owner", "observer"};
+                out << ",{\"id\":\"probe:mind_control_context\","
+                    "\"kind\":\"information\",\"event\":\"base_mind_control_reported\","
+                    "\"viewer_role\":" << json_string(roles[label[11] - '0'])
+                    << ",\"attacker_title\":" << json_string(agent_popup_parse_string(0))
+                    << ",\"attacker_leader_name\":" << json_string(agent_popup_parse_string(1))
+                    << ",\"attacker_faction_noun\":" << json_string(agent_popup_parse_string(2))
+                    << ",\"base_name\":" << json_string(agent_popup_parse_string(3))
+                    << ",\"former_owner_title\":" << json_string(agent_popup_parse_string(4))
+                    << ",\"former_owner_leader_name\":" << json_string(agent_popup_parse_string(5))
+                    << ",\"effect_status\":\"native_resolution_pending_after_acknowledgement\","
+                    "\"meaning\":\"The engine reports a successful base mind-control action. Dismissal offers no alternative and resumes the already-selected native action; verify resulting base ownership and nearby unit ownership afterward.\"}";
             }
             out << "]}";
         } else if (incoming_council_vote_offer_label(label)) {

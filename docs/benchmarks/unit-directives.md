@@ -86,3 +86,15 @@ only a host-emitted `SMACX_RUNTIME_DEFER` marker, waits a bounded minute, resets
 the no-action streak, and retries without relaxing genuine clean-yield or live
 semantic-stall containment. The fixed-candidate measurement must restart from a
 new exact deployed SHA; directive adoption remains unproven by this window.
+
+The repaired `672bed7` window then advanced AI9 from turn 94 to 102 and AI10
+from 85 to 91 before AI9 encountered `MINDCONTROL1`. Exact source inspection
+shows `probe.cpp` selects `MINDCONTROL0/1/2` from the viewing client's role,
+ignores the one-button popup return value, and continues the already-selected
+base/unit ownership transfer after dismissal. The prior multiplayer fail-closed
+catalog correctly exposed the unknown label but left no executable continuation.
+This window is also invalid for final comparison. The reviewed repair admits
+only the three exact labels, identifies viewer/attacker/former-owner/base from
+the native parse fields, labels the effect pending until post-dismissal
+observation, and retains the generic rejection for every other unknown label.
+The exact-label predicate contract, managed action-path contract, and all 24 directive/affected regression suites pass. Native cross-build, deployment, post-dismissal live ownership observation, and a new clean comparison remain pending.
