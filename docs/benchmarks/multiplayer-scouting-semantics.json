@@ -43,6 +43,32 @@
     "explicit_recompile_approval_preserved": true,
     "incident_cleared_only_after_success": true,
     "focused_incident_recovery_test": "pass",
-    "installed_recovery": "pending"
+    "installed_recovery": "pass"
+  },
+  "deployment": {
+    "date": "2026-09-13",
+    "control_image": "sha256:0894610928f14e6ce307f435a94b8364a69c80b6ed8f5cac4b43d36c454d5f3a",
+    "prepared_worker": "smacx-agent-prepared:31f20d357478-b829e813a01e-694c6aebe7d6",
+    "installed_choice_ordinals": "pass",
+    "ai9": {
+      "restored_turn": 47,
+      "observed_turn": 48,
+      "maintenance": "5/5 complete",
+      "active_sovereigns": 2,
+      "active_incidents": 0,
+      "health": "observed_active"
+    },
+    "ai10": {
+      "restored_turn": 52,
+      "observed_turn": 52,
+      "maintenance": "5/5 complete",
+      "active_sovereigns": 2,
+      "active_incidents": 0,
+      "health": "observed_active",
+      "operator_pause_route": "pass"
+    },
+    "workers_healthy": 4,
+    "mcp_sidecars_healthy": 4,
+    "autonomous_auto_explore_uptake": "pending"
   }
 }

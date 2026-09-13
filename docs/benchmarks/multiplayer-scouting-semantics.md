@@ -52,3 +52,16 @@ active, passes that incident into verified recovery, refreshes the runtime, and
 clears it only after recovery succeeds. Explicit portal doctrine-recompile
 approval is still required. The focused incident regression passes; live AI10
 recovery remains the installed gate.
+
+Public-stack deployment completed on September 13. The control image is
+`sha256:0894610928f14e6ce307f435a94b8364a69c80b6ed8f5cac4b43d36c454d5f3a`
+and every managed seat uses prepared worker
+`31f20d357478-b829e813a01e-694c6aebe7d6`. AI9 completed the capability recovery
+5/5, restored turn 47, rebuilt both memory perspectives, restarted both
+sovereigns, and advanced to turn 48. AI10 exercised the repaired operator-pause
+route, completed 5/5, restore-tested its turn-52 checkpoint, rebuilt both memory
+perspectives, and restarted both sovereigns. All four native workers and MCP
+sidecars are healthy; both campaigns report `observed_active`, no health reasons,
+and no active incident. The installed MCP source contains bounded choice
+ordinals. This verifies deployed recovery and continuation, not autonomous use
+of Auto Explore or improved scouting strategy.
