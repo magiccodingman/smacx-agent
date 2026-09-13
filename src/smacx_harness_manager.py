@@ -707,6 +707,21 @@ class HarnessManager:
                 pass
         return {"ok": True, "run": run, "observed": observed}
 
+    def _clean_exit_defer_reason(self, container_name: str | None) -> str | None:
+        """Recognize explicit Hermes soft deferrals that exit with code zero."""
+        if not container_name:
+            return None
+        try:
+            logs = self.docker.container_logs(str(container_name), tail=80)
+        except (DockerError, DockerNotFound):
+            return None
+        terminal = str(logs)[-32_768:]
+        if "SMACX_RUNTIME_DEFER compression_lock_contended" in terminal:
+            return "compression_lock_contended"
+        if "SMACX_RUNTIME_DEFER compression_transient_block" in terminal:
+            return "compression_transient_block"
+        return None
+
     def activity(self, match_id: str, agent_id: str, cursor: str = '') -> dict[str, Any]:
         """Read only the selected seat's activity via an owned, isolated helper."""
         runs = [r for r in self.control.list_harness_runs()
@@ -1164,9 +1179,51 @@ print(json.dumps(result,separators=(',',':')))
             exit_code = int(observed.get("exit_code") or 0)
             policy = run["restart_policy"]
             if exit_code == 0:
-                progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
                 metadata = run.get("metadata") \
                     if isinstance(run.get("metadata"), dict) else {}
+                defer_reason = self._clean_exit_defer_reason(
+                    str(run.get("container_name") or "") or None,
+                )
+                if defer_reason:
+                    now = time.time()
+                    retry_after = float(metadata.get("clean_exit_defer_until_unix") or 0)
+                    first_observation = metadata.get("clean_exit_defer_reason") != defer_reason \
+                        or retry_after <= 0
+                    if first_observation:
+                        retry_after = now + 60.0
+                    defer_metadata = {
+                        "clean_exit_defer_reason": defer_reason,
+                        "clean_exit_defer_until_unix": retry_after,
+                        "clean_exit_defer_count": int(
+                            metadata.get("clean_exit_defer_count") or 0
+                        ) + int(first_observation),
+                        "clean_exit_defer_observed_unix": now,
+                        "consecutive_clean_yields_without_progress": 0,
+                    }
+                    if now < retry_after:
+                        self.control.update_harness_run(
+                            str(run["run_id"]), status="restarting", heartbeat=True,
+                            metadata_update=defer_metadata,
+                        )
+                        continue
+                    self._journal_run_event(
+                        run, "agent.episode_ended", {
+                            "run_id": run["run_id"], "outcome": "runtime_deferred",
+                            "reason": defer_reason, "exit_code": 0,
+                        }, commit_reason="Defer autonomous episode",
+                    )
+                    self.control.update_harness_run(
+                        str(run["run_id"]), status="restarting", exit_code=0,
+                        metadata_update={
+                            **defer_metadata,
+                            "clean_exit_defer_until_unix": None,
+                            "clean_exit_defer_observed_unix": None,
+                        },
+                    )
+                    self.start_run(str(run["run_id"]))
+                    continued += 1
+                    continue
+                progress = self.worker_manager.semantic_progress(str(run["instance_id"]))
                 # An exited CLI may report zero after a runtime-context error.
                 # It is not a playable yield until a fresh native observation
                 # succeeds. Reuse the live-outage deadline without spawning

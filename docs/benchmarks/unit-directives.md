@@ -68,3 +68,21 @@ receipts and canonical directive transactions retain mechanical evidence.
 No live game, campaign quality evaluation, two-client network test, Docker image
 build/deployment, or production recovery was performed for this change. No
 active campaign was touched and no auto-merge or timer was enabled.
+
+## First live candidate window
+
+Candidate `e5800a1f44fb146ba7354e56b395e4aff52303d7` was deployed by exact
+revision and held fixed. AI9 advanced from turn 86 to 94. AI10 advanced from
+turn 84 to 85, then stopped in incident
+`incident-1ce253a410b940c89272aa6e2e1b4af1`; that paired window is invalid for
+performance or directive-adoption acceptance.
+
+The incident was runtime backpressure, not a native deadlock or directive
+effect. Hermes crossed the provider's effective context ceiling, started
+compression, and returned its explicit `compression_deferred` soft result while
+another compression path held the session lock. Three zero-exit retries were
+previously charged as sovereign no-action yields. The supervisor now recognizes
+only a host-emitted `SMACX_RUNTIME_DEFER` marker, waits a bounded minute, resets
+the no-action streak, and retries without relaxing genuine clean-yield or live
+semantic-stall containment. The fixed-candidate measurement must restart from a
+new exact deployed SHA; directive adoption remains unproven by this window.

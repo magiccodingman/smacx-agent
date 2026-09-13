@@ -13,6 +13,7 @@ import copy
 import json
 import logging
 import os
+import sys
 from pathlib import Path
 import re
 import threading
@@ -661,6 +662,26 @@ def _install() -> None:
     # removes superseded, repetitive game-state payloads without altering the
     # durable Hermes transcript.
     import run_agent  # type: ignore
+
+    # Hermes intentionally returns a soft, zero-exit turn when context
+    # compression is already owned by another path. Expose that host-owned
+    # condition to the supervisor as a distinct machine marker; ordinary model
+    # text is never trusted to classify an autonomous yield.
+    try:
+        import agent.conversation_loop as conversation_loop  # type: ignore
+    except ModuleNotFoundError:
+        conversation_loop = None
+    if conversation_loop is not None:
+        original_compression_deferred_result = conversation_loop._compression_deferred_result
+
+        def marked_compression_deferred_result(*args, **kwargs):  # noqa: ANN002,ANN003
+            result = original_compression_deferred_result(*args, **kwargs)
+            reason = "compression_transient_block" \
+                if kwargs.get("reason") == "transient_block" else "compression_lock_contended"
+            print(f"SMACX_RUNTIME_DEFER {reason}", file=sys.stderr, flush=True)
+            return result
+
+        conversation_loop._compression_deferred_result = marked_compression_deferred_result
 
     if os.environ.get("SMACX_DIAGNOSTICS_ENABLED") == "1":
         from smacx_diagnostics import DiagnosticWriter, install_hermes_capture, install_httpx_capture
