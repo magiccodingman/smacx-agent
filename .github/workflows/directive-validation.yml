@@ -1,0 +1,48 @@
+name: Directive validation
+
+on:
+  push:
+    branches: [feat/persistent-unit-directives]
+  pull_request:
+    paths:
+      - 'src/smacx_directive*'
+      - 'scripts/*directive*'
+      - '.github/workflows/directive-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact public source revision
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REPOSITORY: ${{ github.repository }}
+        run: |
+          git init .
+          git remote add origin "https://github.com/${SOURCE_REPOSITORY}.git"
+          git fetch --depth=1 origin "$SOURCE_SHA"
+          git checkout --detach FETCH_HEAD
+      - name: Compile Python sources
+        run: python3 -m compileall -q src harness
+      - name: Run directive contracts when present
+        run: |
+          if test -f scripts/unit_directive_test.py; then
+            PYTHONPATH=src python3 scripts/unit_directive_test.py
+          else
+            echo 'Initial workspace bootstrap; directive contracts not added yet.'
+          fi
+      - name: Export exact source and validation context
+        run: |
+          mkdir -p validation-artifact
+          git archive --format=tar.gz HEAD > validation-artifact/source.tar.gz
+          git rev-parse HEAD > validation-artifact/commit.txt
+      - name: Publish validation artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: directive-validation-source
+          path: validation-artifact/
+          retention-days: 3
