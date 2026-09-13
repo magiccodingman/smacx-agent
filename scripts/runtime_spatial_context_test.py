@@ -74,6 +74,12 @@ defense_projection = {'world_revision': 8, 'map_shape': {
     fields_entity('own-unit-garrison', 'own_unit', 'location-home', {
         'roles': evidence({'combat': True}), 'triad': evidence('land'),
         'movement_points': evidence(1), 'moves_remaining': evidence(1)}),
+    fields_entity('own-unit-former', 'own_unit', 'location-home', {
+        'roles': evidence({'combat': False, 'former': True}), 'triad': evidence('land'),
+        'movement_points': evidence(1), 'moves_remaining': evidence(0)}),
+    fields_entity('own-unit-unknown-role', 'own_unit', 'location-home', {
+        'roles': evidence({'combat': True}, 'stale'), 'triad': evidence('land'),
+        'movement_points': evidence(1), 'moves_remaining': evidence(0)}),
     fields_entity('own-unit-reserve', 'own_unit', 'location-reserve', {
         'roles': evidence({'combat': True}), 'triad': evidence('land'),
         'movement_points': evidence(1), 'moves_remaining': evidence(1)}),
@@ -95,6 +101,9 @@ defense = _nearby_base_defense(ProjectedWorld(), defense_projection,
 assert len(defense['bases']) == 1
 base = defense['bases'][0]
 assert base['observed_defender_count'] == 1 and base['friendly_response']
+assert base['combat_capable_defender_refs'] == ['own-unit-garrison']
+assert base['noncombat_present_refs'] == ['own-unit-former']
+assert base['defender_role_unknown_refs'] == ['own-unit-unknown-role']
 foreign = base['visible_foreign_response'][0]
 assert foreign['formal_relationship'] == {
     'epistemic_status': 'current', 'pact': False, 'treaty': True,
@@ -102,6 +111,8 @@ assert foreign['formal_relationship'] == {
 assert foreign['foreign_movement_zoc_constraint'] is True
 assert foreign['inferred_intent'] == 'unknown_not_mechanically_observed'
 assert defense['evidence_boundaries']['visible_forces'] == 'lower_bound_only'
+assert 'does not predict movement' in defense['evidence_boundaries']['eta_meaning']
+assert 'does not establish ZOC damage' in defense['evidence_boundaries']['damage_attribution']
 assert 'do not prove equal resources' in defense['shared_era_context']['meaning']
 print(json.dumps({'ok': True, 'large_relations': len(r['relations']), 'large_tokens': estimate_tokens(r),
                   'nearby_defense_surfaced': True,

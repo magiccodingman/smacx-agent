@@ -122,7 +122,9 @@ def main() -> int:
 
         recovery_calls: list[tuple[str, bool]] = []
 
-        def recover(match_id: str, *, refresh_runtime: bool = False) -> dict:
+        def recover(match_id: str, *, refresh_runtime: bool = False,
+                    operator_pause_incident_id=None) -> dict:
+            assert operator_pause_incident_id is None
             active = control.list_supervision_incidents(match_id=match_id, active_only=True)
             if capability["incident_id"] not in {item["incident_id"] for item in active}:
                 raise AssertionError("capability latch cleared before native recovery")
@@ -156,7 +158,8 @@ def main() -> int:
             "operator_required", {"turn": 13},
         )
 
-        def fail_recovery(match_id: str, *, refresh_runtime: bool = False) -> dict:
+        def fail_recovery(match_id: str, *, refresh_runtime: bool = False,
+                          operator_pause_incident_id=None) -> dict:
             raise WorkerManagerError("contained_recovery_failure")
 
         manager.recover_match = fail_recovery
@@ -185,8 +188,10 @@ def main() -> int:
         else:
             raise AssertionError("clean-yield restore failure accepted")
         assert control.get_supervision_incident(clean["incident_id"])["status"] == "operator_required"
-        def recover_clean(match_id, *, refresh_runtime=False):
+        def recover_clean(match_id, *, refresh_runtime=False,
+                          operator_pause_incident_id=None):
             assert refresh_runtime is True
+            assert operator_pause_incident_id is None
             assert control.get_supervision_incident(clean["incident_id"])["status"] == "operator_required"
             control.update_match_lifecycle(match_id, "running")
             return {"ok": True}
@@ -200,6 +205,45 @@ def main() -> int:
             assert str(exception) == "capability_incident_required"
         else:
             raise AssertionError("unrelated incident accepted")
+
+        operator_pause = control.record_supervision_incident(
+            instance["instance_id"], "operator_pause", "operator_required",
+            {"summary": "doctrine recompile containment fixture"},
+        )
+        try:
+            manager.retry_match_after_update(scope.match_id,
+                                             operator_pause["incident_id"])
+        except WorkerManagerError as exception:
+            assert str(exception) == "unresolved_incident_blocks_operator_resume"
+        else:
+            raise AssertionError("operator pause bypassed an unrelated incident")
+        control.recover_supervision_incidents(
+            scope.match_id,
+            kinds=tuple({row["incident_kind"] for row in
+                         control.list_supervision_incidents(
+                             match_id=scope.match_id, active_only=True)}),
+        )
+        operator_pause = control.record_supervision_incident(
+            instance["instance_id"], "operator_pause", "operator_required",
+            {"summary": "doctrine recompile containment fixture"},
+        )
+        operator_recovery = []
+        def recover_operator(match_id, *, refresh_runtime=False,
+                             operator_pause_incident_id=None):
+            operator_recovery.append((match_id, refresh_runtime,
+                                      operator_pause_incident_id))
+            control.update_match_lifecycle(match_id, "running")
+            return {"ok": True}
+        manager.recover_match = recover_operator
+        result = manager.retry_match_after_update(
+            scope.match_id, operator_pause["incident_id"],
+        )
+        assert result["operator_attention_cleared"]
+        assert operator_recovery == [(
+            scope.match_id, True, operator_pause["incident_id"],
+        )]
+        assert control.get_supervision_incident(
+            operator_pause["incident_id"])["status"] == "recovered"
 
         # A bridge outage with a live container must freeze once and remain
         # latched on the next supervision pass, including sidecar restarts.

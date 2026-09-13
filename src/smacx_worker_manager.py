@@ -4419,8 +4419,11 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
         incident = self.control.get_supervision_incident(incident_id)
         if incident["match_id"] != match_id:
             raise WorkerManagerError("incident_match_mismatch")
-        if (not str(incident["incident_kind"]).startswith("capability_gap:")
-                and incident["incident_kind"] != "harness_clean_yield_no_progress"):
+        incident_kind = str(incident["incident_kind"])
+        if (not incident_kind.startswith("capability_gap:")
+                and incident_kind not in {
+                    "harness_clean_yield_no_progress", "operator_pause",
+                }):
             raise WorkerManagerError("capability_incident_required")
         if incident["status"] not in {"open", "operator_required"}:
             match = self.control.get_match(match_id)
@@ -4430,10 +4433,20 @@ printf '{"ok":true,"fingerprint":"%s"}\n' "$fingerprint"
                     "recovered_incidents": [incident], "runtime_refresh": [],
                 }
             raise WorkerManagerError("active_capability_incident_required")
-        recovered = self.recover_match(match_id, refresh_runtime=True)
+        if incident_kind == "operator_pause":
+            active = self.control.list_supervision_incidents(
+                match_id=match_id, active_only=True,
+            )
+            if any(row["incident_kind"] != "operator_pause" for row in active):
+                raise WorkerManagerError("unresolved_incident_blocks_operator_resume")
+        recovered = self.recover_match(
+            match_id, refresh_runtime=True,
+            operator_pause_incident_id=(incident_id
+                                        if incident_kind == "operator_pause" else None),
+        )
         incidents = self.control.recover_supervision_incidents(
             match_id,
-            kinds=(str(incident["incident_kind"]), "harness_clean_yield_no_progress"),
+            kinds=(incident_kind, "harness_clean_yield_no_progress"),
         )
         recovered.update({
             "incident_id": incident_id,

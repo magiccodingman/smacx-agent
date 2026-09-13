@@ -268,7 +268,12 @@ def _nearby_base_defense(world: WorldService, projection: Mapping[str, Any],
         relevant.append({
             "base_ref": row.get("base_ref"), "location_ref": row.get("location_ref"),
             "garrison_refs": list(row.get("garrison_refs", ()))[:12],
+            "combat_capable_defender_refs": list(
+                row.get("combat_capable_defender_refs", ()))[:12],
             "observed_defender_count": row.get("observed_defender_count"),
+            "noncombat_present_refs": list(row.get("noncombat_present_refs", ()))[:12],
+            "defender_role_unknown_refs": list(
+                row.get("defender_role_unknown_refs", ()))[:12],
             "friendly_response": list(row.get("friendly_response", ()))[:8],
             "visible_foreign_response": nearby[:8],
         })
@@ -282,7 +287,9 @@ def _nearby_base_defense(world: WorldService, projection: Mapping[str, Any],
             "formal_relationship": "Treaty, Truce, Pact and Vendetta flags are reported separately when current.",
             "movement_zoc": "A foreign non-Pact movement constraint does not prove Vendetta or hostile intent.",
             "inferred_intent": "unknown unless separately supported by observed actions or communication.",
-            "defense_strength": "Garrison counts and response ETA do not establish combat odds. Global repair-rule bonuses are not combat defense modifiers.",
+            "defense_strength": "Only current combat-capable co-located units count as observed defenders. Noncombat and unknown-role units remain separate. Defender counts and response ETA do not establish combat odds. Global repair-rule bonuses are not combat defense modifiers.",
+            "eta_meaning": "Minimum observed ETA reports mechanical reachability by one visible force. It does not predict movement, attack, or intent.",
+            "damage_attribution": "A unit's observed hit-point decline does not establish ZOC damage, bombardment, attacker identity, or cause without a separate current native event that reports it.",
         },
     }
 

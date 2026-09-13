@@ -1517,6 +1517,60 @@ def negotiate_human_joint_attack(
     }, separators=(",", ":")))
 
 
+def exercise_multiplayer_auto_explore() -> None:
+    """Prove persistent Explore and cancellation on two real native peers."""
+    host_turn, _, _, _ = resolve_opening_interactions_pair()
+    combat = next(
+        (unit for unit in host_turn.get("ready_unit_refs", [])
+         if unit.get("roles", {}).get("combat") is True),
+        None,
+    )
+    if combat is None:
+        raise AssertionError(f"host lacked a ready combat explorer: {host_turn}")
+    unit_id = int(combat["id"]) if "id" in combat \
+        else native_id_for_ready_ref(HOST_PORT, combat)
+    choices = wait_unit_choices(HOST_PORT, unit_id, peer_port=JOIN_PORT)
+    if not any(choice.get("command") == "auto_explore_unit"
+               for choice in choices.get("choices", [])):
+        raise AssertionError(f"LAN Explore choice was absent: {choices}")
+    result = request(
+        HOST_PORT, "semantic_command", command="auto_explore_unit",
+        unit_id=unit_id, match_id=choices["match_id"],
+        session_id=choices["session_id"], expected_revision=choices["revision"],
+    )
+    if not result.get("ok") or result.get("persistent") is not True:
+        raise AssertionError(f"guarded LAN Explore failed: {result}")
+    host_sync, join_sync = wait_network_vehicle_match()
+    for label, state in (("host", host_sync), ("join", join_sync)):
+        vehicle = next((row for row in state["vehicles"] if row["id"] == unit_id), None)
+        if vehicle is None or not (int(vehicle.get("state", 0)) & 0x4000):
+            raise AssertionError(f"{label} did not retain Explore state: {vehicle}")
+    choices = wait_unit_choices(HOST_PORT, unit_id, peer_port=JOIN_PORT)
+    if [choice.get("command") for choice in choices.get("choices", [])
+        if choice.get("command")] != ["activate_unit"]:
+        raise AssertionError(f"LAN explorer was not activate-only: {choices}")
+    result = request(
+        HOST_PORT, "semantic_command", command="activate_unit",
+        unit_id=unit_id, match_id=choices["match_id"],
+        session_id=choices["session_id"], expected_revision=choices["revision"],
+    )
+    if not result.get("ok") or result.get("old_automation") != "auto_explore":
+        raise AssertionError(f"guarded LAN Explore cancellation failed: {result}")
+    host_sync, join_sync = wait_network_vehicle_match()
+    for label, state in (("host", host_sync), ("join", join_sync)):
+        vehicle = next((row for row in state["vehicles"] if row["id"] == unit_id), None)
+        if vehicle is None or int(vehicle.get("state", 0)) & 0x4000:
+            raise AssertionError(f"{label} retained cancelled Explore state: {vehicle}")
+    print(json.dumps({
+        "event": "pass",
+        "auto_explore_unit_synchronized": True,
+        "auto_explore_activation_synchronized": True,
+        "activate_only_while_exploring": True,
+        "native_clients": 2,
+        "pixels_or_ui_input_used": False,
+    }, separators=(",", ":")))
+
+
 def main() -> int:
     join_display_process = launch_join_display()
     pair_process = launch_pair()
@@ -1704,6 +1758,9 @@ def main() -> int:
 
         host_faction_id = host_sync["local_faction_id"]
         join_faction_id = join_sync["local_faction_id"]
+        if os.environ.get("SMACX_TEST_AUTO_EXPLORE_ONLY") == "1":
+            exercise_multiplayer_auto_explore()
+            return 0
         if os.environ.get("SMACX_TEST_MULTIPLAYER_AI_CONTACT") == "1":
             exercise_multiplayer_ai_contact(host_faction_id)
             return 0
@@ -2335,10 +2392,73 @@ def main() -> int:
                           for unit in join_turn.get("ready_unit_refs", [])]
         if len(join_ready_ids) < 2:
             raise AssertionError(
-                f"joiner lacked units needed for hold/sentry regression: {join_turn}"
+                f"joiner lacked units needed for explore/hold/sentry regression: {join_turn}"
             )
+
+        explore_unit_id = join_ready_ids[0]
+        explore_choices = wait_unit_choices(
+            JOIN_PORT, explore_unit_id, peer_port=HOST_PORT,
+        )
+        if not any(choice.get("command") == "auto_explore_unit"
+                   for choice in explore_choices.get("choices", [])):
+            raise AssertionError(
+                f"LAN combat unit lacked guarded native Explore: {explore_choices}"
+            )
+        explored = request(
+            JOIN_PORT,
+            "semantic_command",
+            command="auto_explore_unit",
+            unit_id=explore_unit_id,
+            match_id=explore_choices["match_id"],
+            session_id=explore_choices["session_id"],
+            expected_revision=explore_choices["revision"],
+        )
+        if not explored.get("ok") or explored.get("command") != "auto_explore_unit":
+            raise AssertionError(f"guarded LAN Explore failed: {explored}")
+        host_sync, join_sync = wait_network_vehicle_match()
+        exploring = next(
+            (vehicle for vehicle in join_sync["vehicles"]
+             if vehicle["id"] == explore_unit_id), None,
+        )
+        if exploring is None or not (int(exploring.get("state", 0)) & 0x4000):
+            raise AssertionError(
+                f"native LAN Explore state did not converge: {exploring} / "
+                f"{host_sync} / {join_sync}"
+            )
+
+        activate_choices = wait_unit_choices(
+            JOIN_PORT, explore_unit_id, peer_port=HOST_PORT,
+        )
+        if [choice.get("command") for choice in activate_choices.get("choices", [])
+            if choice.get("command")] != ["activate_unit"]:
+            raise AssertionError(
+                f"exploring LAN unit did not become activate-only: {activate_choices}"
+            )
+        activated = request(
+            JOIN_PORT,
+            "semantic_command",
+            command="activate_unit",
+            unit_id=explore_unit_id,
+            match_id=activate_choices["match_id"],
+            session_id=activate_choices["session_id"],
+            expected_revision=activate_choices["revision"],
+        )
+        if not activated.get("ok") or activated.get("old_automation") != "auto_explore":
+            raise AssertionError(f"guarded LAN Explore activation failed: {activated}")
+        host_sync, join_sync = wait_network_vehicle_match()
+        activated_vehicle = next(
+            (vehicle for vehicle in join_sync["vehicles"]
+             if vehicle["id"] == explore_unit_id), None,
+        )
+        if activated_vehicle is None \
+                or int(activated_vehicle.get("state", 0)) & 0x4000:
+            raise AssertionError(
+                f"native LAN Explore activation did not converge: {activated_vehicle} / "
+                f"{host_sync} / {join_sync}"
+            )
+
         host_sync, join_sync = execute_finish_action(
-            JOIN_PORT, HOST_PORT, join_ready_ids[0], "hold_unit",
+            JOIN_PORT, HOST_PORT, explore_unit_id, "hold_unit",
         )
         held = next(
             (vehicle for vehicle in join_sync["vehicles"] if vehicle["id"] == join_ready_ids[0]),
@@ -3027,6 +3147,8 @@ def main() -> int:
             "safe_adjacent_unit_move_synchronized": True,
             "already_at_war_combat_synchronized": True,
             "skip_unit_synchronized": True,
+            "auto_explore_unit_synchronized": True,
+            "auto_explore_activation_synchronized": True,
             "hold_unit_synchronized": True,
             "sentry_unit_synchronized": True,
             "native_turn_transferred_to_joiner": True,

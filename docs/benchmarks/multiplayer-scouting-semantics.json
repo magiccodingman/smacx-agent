@@ -1,0 +1,74 @@
+{
+  "checkpoint": "multiplayer_scouting_and_threat_semantics",
+  "observed": {
+    "ai9_ready_scout_held_at_base_turns_approx": 6,
+    "multiplayer_auto_explore_choice_before": false,
+    "ai10_multiple_ready_or_held_scouts_observed": true,
+    "behavioral_interpretation": "symptom only; not proof of optimal strategy"
+  },
+  "represented": {
+    "multiplayer_auto_explore_choice": true,
+    "combat_capable_defender_refs": true,
+    "noncombat_present_refs": true,
+    "defender_role_unknown_refs": true,
+    "eta_is_reachability_not_forecast": true,
+    "damage_cause_requires_separate_native_event": true
+  },
+  "executable_effect": {
+    "native_clients": 2,
+    "auto_explore_state_synchronized": true,
+    "activate_only_while_exploring": true,
+    "activation_synchronized": true,
+    "pixels_or_ui_input_used": false
+  },
+  "managed_choice_recovery": {
+    "observed_turn": 47,
+    "fresh_decision_ids_copied_exactly": 4,
+    "fabricated_uuid_choice_ids": 4,
+    "fabricated_ids_present_in_episode": false,
+    "choice_handle_after": "bounded_frame_local_ordinal",
+    "private_binding_and_native_guards_preserved": true,
+    "focused_recovery_and_opaque_execution_tests": "pass"
+  },
+  "limits": {
+    "autonomous_sovereign_use": "pending fresh deployed campaign",
+    "strategic_path_quality": "native engine/model behavior; not claimed",
+    "broad_lan_suite": "earlier unrelated seed-sensitive stages did not complete"
+  },
+  "doctrine_change_operator_recovery": {
+    "observed": "ordinary refreshed restore failed closed on changed doctrine and produced operator_pause",
+    "admission": "exact operator_pause accepted only with no unrelated active incident",
+    "verified_checkpoint_required": true,
+    "runtime_refresh_required": true,
+    "explicit_recompile_approval_preserved": true,
+    "incident_cleared_only_after_success": true,
+    "focused_incident_recovery_test": "pass",
+    "installed_recovery": "pass"
+  },
+  "deployment": {
+    "date": "2026-09-13",
+    "control_image": "sha256:0894610928f14e6ce307f435a94b8364a69c80b6ed8f5cac4b43d36c454d5f3a",
+    "prepared_worker": "smacx-agent-prepared:31f20d357478-b829e813a01e-694c6aebe7d6",
+    "installed_choice_ordinals": "pass",
+    "ai9": {
+      "restored_turn": 47,
+      "observed_turn": 48,
+      "maintenance": "5/5 complete",
+      "active_sovereigns": 2,
+      "active_incidents": 0,
+      "health": "observed_active"
+    },
+    "ai10": {
+      "restored_turn": 52,
+      "observed_turn": 52,
+      "maintenance": "5/5 complete",
+      "active_sovereigns": 2,
+      "active_incidents": 0,
+      "health": "observed_active",
+      "operator_pause_route": "pass"
+    },
+    "workers_healthy": 4,
+    "mcp_sidecars_healthy": 4,
+    "autonomous_auto_explore_uptake": "pending"
+  }
+}
