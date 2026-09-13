@@ -43,3 +43,12 @@ single-use, native validation, journal, and four-failure stop remain unchanged.
 Controlled decision-recovery and opaque-execution suites pass selection after a
 fresh recovery frame and reject invented, expired, consumed, cross-scope, and
 replayed handles. Installed provider uptake remains a deployment gate.
+
+Deployment also exercised an ordinary parked restore across the doctrine change.
+The worker correctly rebased and the doctrine check failed closed, but containment
+produced an `operator_pause` that `retry-after-update` did not admit. The repaired
+path accepts the exact operator-pause incident only when no unrelated incident is
+active, passes that incident into verified recovery, refreshes the runtime, and
+clears it only after recovery succeeds. Explicit portal doctrine-recompile
+approval is still required. The focused incident regression passes; live AI10
+recovery remains the installed gate.
