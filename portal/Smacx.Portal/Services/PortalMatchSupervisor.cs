@@ -926,6 +926,20 @@ public sealed class PortalMatchSupervisor(
                 match.Status = "error";
                 match.LastError = exception.Message;
                 match.UpdatedAt = DateTimeOffset.UtcNow;
+                var failedRecovery = await database.PortalMaintenanceOperations
+                    .Where(item => item.MatchId == match.MatchId &&
+                        item.Kind == "capability_recovery" && item.Status == "running")
+                    .OrderByDescending(item => item.UpdatedAt)
+                    .FirstOrDefaultAsync(CancellationToken.None);
+                if (failedRecovery is not null)
+                {
+                    failedRecovery.Status = "failed";
+                    failedRecovery.Phase = "operator_review";
+                    failedRecovery.Summary = exception.Message;
+                    failedRecovery.CanCancel = false;
+                    failedRecovery.CompletedAt = DateTimeOffset.UtcNow;
+                    failedRecovery.UpdatedAt = DateTimeOffset.UtcNow;
+                }
                 database.PortalMatchEvents.Add(new PortalMatchEvent
                 {
                     MatchId = match.MatchId, EventType = "doctrine_start_failed",
