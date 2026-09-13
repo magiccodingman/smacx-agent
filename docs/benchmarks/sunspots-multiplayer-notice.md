@@ -28,3 +28,20 @@ cross-build, managed action path, decision recovery, opaque choice execution,
 notification drain, and doctrine integration contracts pass. Public deployment,
 verified AI9 recovery across the original popup, and sustained post-recovery
 progress remain open gates.
+
+Public deployment installed control image
+`sha256:f7eaf6ffc2b333ea3550e5fc6acbc65248c1e5ca782c7c6245c86060c794be0f`
+and worker image
+`sha256:09d40c9c62e5325737dc52a1ad5b38ec487c99c526a7970b33c514624de6a297`.
+AI9 completed supported 5/5 recovery from its verified turn-69 checkpoint on
+prepared worker `31f20d357478-b829e813a01e-09d40c9c62e5`.
+
+Both AI9 perspectives then observed current duration 12, captured
+`sunspot_activity_started` before dismissal, and executed exactly one guarded
+`choice-01` `acknowledge_popup` action. The capability incident cleared, both
+sovereigns remained active, and checkpoint
+`checkpoint-3e6d121b2022495e8968517184a8a1f7` was save-verified at turn 70.
+This proves the repaired start notice is observed, represented,
+provider-queryable, sovereign-expressible, executable, effect-verified, and
+recovery-safe. Sustained progression and a production recurrence of the ending
+notice remain pending.

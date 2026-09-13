@@ -45,8 +45,27 @@
     "doctrine_integration": "pass"
   },
   "limits": {
-    "public_deployment": "pending",
-    "campaign_recovery": "pending",
-    "post_recovery_progression": "pending"
+    "public_deployment": "pass",
+    "campaign_recovery": "pass for AI9",
+    "post_recovery_progression": "original SUNSPOTS boundary crossed; sustained progression pending",
+    "production_no_more_spots_recurrence": "pending"
+  },
+  "deployment": {
+    "control_image": "sha256:f7eaf6ffc2b333ea3550e5fc6acbc65248c1e5ca782c7c6245c86060c794be0f",
+    "worker_image": "sha256:09d40c9c62e5325737dc52a1ad5b38ec487c99c526a7970b33c514624de6a297",
+    "prepared_worker": "smacx-agent-prepared:31f20d357478-b829e813a01e-09d40c9c62e5",
+    "ai9": {
+      "restored_turn": 69,
+      "observed_turn": 70,
+      "production_perspectives_acknowledging": 2,
+      "context_event": "sunspot_activity_started",
+      "sunspot_duration": 12,
+      "choice_id": "choice-01",
+      "command": "acknowledge_popup",
+      "checkpoint": "checkpoint-3e6d121b2022495e8968517184a8a1f7",
+      "checkpoint_status": "save_verified",
+      "active_incidents": 0,
+      "active_sovereigns": 2
+    }
   }
 }
