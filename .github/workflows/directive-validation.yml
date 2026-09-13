@@ -1,52 +1,57 @@
-name: Directive validation
+name: Unit directive contracts
 
 on:
   push:
-    branches: [feat/persistent-unit-directives]
-  pull_request:
+    branches: [main, feat/persistent-unit-directives]
     paths:
-      - 'src/smacx_directive*'
-      - 'scripts/*directive*'
+      - 'src/**'
+      - 'harness/**'
+      - 'scripts/**'
+      - 'control_center/Dockerfile'
+      - '.github/workflows/directive-validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'harness/**'
+      - 'scripts/**'
+      - 'control_center/Dockerfile'
       - '.github/workflows/directive-validation.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: unit-directives-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  contracts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out exact public source revision
-        env:
-          SOURCE_SHA: ${{ github.sha }}
-          SOURCE_REPOSITORY: ${{ github.repository }}
-        run: |
-          git init .
-          git remote add origin "https://github.com/${SOURCE_REPOSITORY}.git"
-          git fetch --depth=1 origin "$SOURCE_SHA"
-          git checkout --detach FETCH_HEAD
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.13'
+      - name: Install repository-pinned MCP dependency
+        run: python -m pip install 'mcp==2.0.0'
       - name: Compile Python sources
-        run: python3 -m compileall -q src harness
-      - name: Download pinned test dependencies
+        run: python -m compileall -q src harness
+      - name: Run new directive cases and affected regression suites
+        run: python scripts/unit_directive_validation.py --output runtime/directive-validation
+      - name: Record tested revision
+        if: always()
         run: |
-          mkdir -p validation-artifact/wheels
-          python3 -m pip download --only-binary=:all: --python-version 3.13 --dest validation-artifact/wheels 'mcp==2.0.0'
-      - name: Run directive contracts when present
-        run: |
-          if test -f scripts/unit_directive_test.py; then
-            PYTHONPATH=src python3 scripts/unit_directive_test.py
-          else
-            echo 'Initial workspace bootstrap; directive contracts not added yet.'
-          fi
-      - name: Export exact source and validation context
-        run: |
-          mkdir -p validation-artifact
-          git archive --format=tar.gz HEAD > validation-artifact/source.tar.gz
-          git rev-parse HEAD > validation-artifact/commit.txt
-      - name: Publish validation artifact
+          mkdir -p runtime/directive-validation
+          git rev-parse HEAD > runtime/directive-validation/source-commit.txt
+      - name: Retain per-suite evidence
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: directive-validation-source
-          path: validation-artifact/
-          retention-days: 3
+          name: unit-directive-validation-${{ github.run_id }}
+          path: runtime/directive-validation/
+          retention-days: 14
+          if-no-files-found: warn
