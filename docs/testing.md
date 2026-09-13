@@ -37,6 +37,13 @@ PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/capability_incident_contract_test.py
 PYTHONPATH=src python3 scripts/incident_recovery_test.py
+
+# Requires an operator-owned pre-perihelion multiplayer save and isolated native workers.
+SMACX_PERIHELION_TEST_SAVE=/path/to/turn59.sav \
+SMACX_TEST_GAME_SOURCE=/path/to/owned/game \
+SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+PYTHONPATH=src python3 scripts/native_perihelion_notice_test.py
 PYTHONPATH=src python3 scripts/worker_lifecycle_serialization_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py

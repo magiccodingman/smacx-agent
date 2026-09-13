@@ -4157,6 +4157,11 @@ bool reviewed_information_popup(const std::string& label) {
     return label.compare(0, 10, "PLANETFALL") == 0
         || label == "SIMULYOU" || label == "SIMULWHOSE"
         || label == "ALIENSARRIVE" || label == "SURPRISE"
+        // gameturn.cpp commits the shared perihelion flag before either POP2
+        // call and immediately returns after presentation. These one-button
+        // notices therefore report the already-current ecology state; their
+        // native result is not consulted for a strategic branch.
+        || label == "PERIHELION" || label == "PERIHELIONENDS"
         // Multiplayer's turn clock raises this local, one-button notice after
         // the shared timer has already crossed its threshold. Acknowledging it
         // only dismisses presentation on this client.
@@ -14295,6 +14300,16 @@ std::string semantic_choices_response(const std::string& request) {
                     << json_string(agent_popup_parse_string(1))
                     << ",\"effect_status\":\"reported_complete_by_native_notice\","
                     "\"meaning\":\"The engine reports that matching future production was already upgraded. Acknowledgement only closes this local presentation; inspect affected bases later for current queues.\"}";
+            }
+            if (!strcmp(label, "PERIHELION") || !strcmp(label, "PERIHELIONENDS")) {
+                const bool active = (*GameState & STATE_PERIHELION_ACTIVE) != 0;
+                out << ",{\"id\":\"ecology:perihelion_context\","
+                    "\"kind\":\"information\",\"event\":"
+                    << json_string(!strcmp(label, "PERIHELION")
+                        ? "perihelion_started" : "perihelion_ended")
+                    << ",\"effect_status\":\"reported_complete_by_native_notice\","
+                    "\"perihelion_active\":" << (active ? "true" : "false")
+                    << ",\"meaning\":\"The engine committed the shared perihelion ecology state before opening this local notice. Acknowledgement only closes presentation; use the current ecology fields for subsequent decisions.\"}";
             }
             if ((!strcmp(label, "CALLSCOUNCIL") || !strncmp(label, "COUNCILHOT", 10))
             && CouncilProposal[faction_id] >= 0 && CouncilProposal[faction_id] < MaxProposalNum) {

@@ -1,0 +1,46 @@
+{
+  "checkpoint": "multiplayer_perihelion_notice",
+  "observed": {
+    "campaigns": 2,
+    "turn": 60,
+    "popup_label": "PERIHELION",
+    "choices_before": 0,
+    "safe_incidents_created": 2,
+    "verified_checkpoint_turn": 59
+  },
+  "represented": {
+    "events": [
+      "perihelion_started",
+      "perihelion_ended"
+    ],
+    "current_native_flag": "perihelion_active",
+    "acknowledgement_scope": "local presentation only",
+    "effect_status": "reported_complete_by_native_notice"
+  },
+  "native_replay": {
+    "save_sha256": "e0ce041e9b54f4356d8ae4ab2eaed6c9c11f603c992014942df56f524c5f1e03",
+    "native_clients": 2,
+    "real_turn_60_notice": true,
+    "guarded_acknowledgement": true,
+    "dismissal_left_popup_stack": true,
+    "shared_units_unchanged": true,
+    "shared_bases_unchanged": true,
+    "both_replicas_perihelion_active": true
+  },
+  "limits": {
+    "perihelion_ends_live_replay": "not performed; compiled shared-path contract only",
+    "public_deployment": "pending",
+    "campaign_recovery": "pending",
+    "post_recovery_progression": "pending"
+  },
+  "tests": {
+    "compiled_popup_label_contract": "pass",
+    "reviewed_engine_fingerprint": "928d7661bb5a877905fd382b71dd7e7042536eb98c78f51ab2682523b7501fac",
+    "native_bridge_cross_build": "pass",
+    "managed_action_path_contract": "pass",
+    "decision_recovery": "pass",
+    "opaque_choice_execution": "pass",
+    "doctrine_integration": "pass",
+    "automatic_notification_drain": "pass"
+  }
+}

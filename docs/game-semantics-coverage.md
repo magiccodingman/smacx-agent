@@ -1532,3 +1532,9 @@ At 16:30 UTC, first post-repair healthy check: AI9 advanced 22→24 and AI10 15�
 | Doctrine-change recovery from operator containment | Ordinary AI10 restore selected the reviewed worker and then failed closed on the changed doctrine, producing an `operator_pause` → explicit `retry-after-update` now accepts that exact incident only when no unrelated incident remains → verified checkpoint restore receives the matching pause handle, refreshes the runtime, and clears the pause only after success. The existing explicit portal `recompile_doctrine` approval remains required. Focused incident recovery passes; deployed AI10 recovery completes 5/5 with a restore-tested turn-52 checkpoint, two healthy native/MCP pairs, both sovereigns active, and no incident. |
 
 See [multiplayer scouting acceptance](benchmarks/multiplayer-scouting-semantics.md).
+
+| Multiplayer perihelion notice checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Start/end ecology presentation | Two independent live turn-60 gaps → exact `gameturn.cpp` ordering proves the shared flag changes before presentation → `PERIHELION` and `PERIHELIONENDS` represented as reviewed information with current native ecology state → guarded multiplayer acknowledgement → native callback closes the exact popup → real turn-59 save replay reaches turn 60 → two DirectPlay replicas retain the active flag with units and bases unchanged. The ending label shares the compiled path but an eighty-year live replay is not claimed. Public deployment, paired recovery, and renewed progression remain pending. |
+
+See [perihelion notice acceptance](benchmarks/perihelion-multiplayer-notice.md).
