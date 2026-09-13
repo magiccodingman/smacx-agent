@@ -14,7 +14,7 @@ information = re.search(r'bool reviewed_information_popup\(.*?\n}', source, re.S
 liberation = re.search(r'label\.compare\(0, sizeof\("LIBERATEBASE"\).*?== 0', source).group()
 program = '#include <string>\n#include <cassert>\n' + function + information + '''
 int main() {
- for (auto label : {"SPORESLAUNCHED", "SPOREFOREST", "PRODUPGRADE", "PERIHELION", "PERIHELIONENDS"})
+ for (auto label : {"SPORESLAUNCHED", "SPOREFOREST", "PRODUPGRADE", "PERIHELION", "PERIHELIONENDS", "SUNSPOTS", "NOMORESPOTS"})
   assert(reviewed_information_popup(label));
  for (auto label : {"SPORESLAUNCHEDX", "SPORE", "SPOREFOREST0", "MONOLITH", "WEASELOUT", "ASKPRODUPGRADE"})
   assert(!reviewed_information_popup(label));

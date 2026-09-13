@@ -4162,6 +4162,11 @@ bool reviewed_information_popup(const std::string& label) {
         // notices therefore report the already-current ecology state; their
         // native result is not consulted for a strategic branch.
         || label == "PERIHELION" || label == "PERIHELIONENDS"
+        // gameturn.cpp commits SunspotDuration before opening either notice.
+        // SUNSPOTS is raised after assigning a positive duration;
+        // NOMORESPOTS is raised after the turn decrement reaches zero. The
+        // popup return value is not consulted for a strategic branch.
+        || label == "SUNSPOTS" || label == "NOMORESPOTS"
         // Multiplayer's turn clock raises this local, one-button notice after
         // the shared timer has already crossed its threshold. Acknowledging it
         // only dismisses presentation on this client.
@@ -14310,6 +14315,17 @@ std::string semantic_choices_response(const std::string& request) {
                     << ",\"effect_status\":\"reported_complete_by_native_notice\","
                     "\"perihelion_active\":" << (active ? "true" : "false")
                     << ",\"meaning\":\"The engine committed the shared perihelion ecology state before opening this local notice. Acknowledgement only closes presentation; use the current ecology fields for subsequent decisions.\"}";
+            }
+            if (!strcmp(label, "SUNSPOTS") || !strcmp(label, "NOMORESPOTS")) {
+                const int duration = *SunspotDuration;
+                out << ",{\"id\":\"ecology:sunspots_context\","
+                    "\"kind\":\"information\",\"event\":"
+                    << json_string(!strcmp(label, "SUNSPOTS")
+                        ? "sunspot_activity_started" : "sunspot_activity_ended")
+                    << ",\"effect_status\":\"reported_complete_by_native_notice\","
+                    "\"sunspot_duration\":" << duration
+                    << ",\"sunspots_active\":" << (duration > 0 ? "true" : "false")
+                    << ",\"meaning\":\"The engine committed the shared sunspot duration before opening this local notice. Acknowledgement only closes presentation; use the current ecology field for subsequent decisions.\"}";
             }
             if ((!strcmp(label, "CALLSCOUNCIL") || !strncmp(label, "COUNCILHOT", 10))
             && CouncilProposal[faction_id] >= 0 && CouncilProposal[faction_id] < MaxProposalNum) {

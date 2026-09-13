@@ -1,0 +1,52 @@
+{
+  "checkpoint": "multiplayer_sunspots_notice",
+  "observed": {
+    "campaign": "AI9 Instruct",
+    "turn": 70,
+    "popup_label": "SUNSPOTS",
+    "sunspot_duration": 12,
+    "managed_choices_before": 0,
+    "safe_incident": "incident-b30654cb207e4d7bb688f1ee27a7558c",
+    "verified_checkpoint_available": true
+  },
+  "represented": {
+    "events": [
+      "sunspot_activity_started",
+      "sunspot_activity_ended"
+    ],
+    "native_field": "sunspot_duration",
+    "active_derivation": "sunspot_duration > 0",
+    "acknowledgement_scope": "local presentation only",
+    "effect_status": "reported_complete_by_native_notice"
+  },
+  "native_replay": {
+    "save_sha256": "79f66aecd5c976410f88e2d14758f5729fbaae885a2020f68716233afa91efb7",
+    "native_clients": 2,
+    "sunspots": {
+      "acknowledging_clients": 2,
+      "dismissal_left_popup_stack": true,
+      "replica_durations": [12, 12]
+    },
+    "no_more_spots": {
+      "acknowledging_clients": 2,
+      "dismissal_left_popup_stack": true,
+      "replica_durations": [0, 0]
+    }
+  },
+  "tests": {
+    "compiled_popup_label_contract": "pass",
+    "reviewed_engine_fingerprint": "22c3175d6cfaed24aeaeeee31613e6d7766a252484527be01189345a32a01107",
+    "native_bridge_cross_build": "pass",
+    "exact_two_client_native_replay": "pass",
+    "managed_action_path_contract": "pass",
+    "decision_recovery": "pass",
+    "opaque_choice_execution": "pass",
+    "automatic_notification_drain": "pass",
+    "doctrine_integration": "pass"
+  },
+  "limits": {
+    "public_deployment": "pending",
+    "campaign_recovery": "pending",
+    "post_recovery_progression": "pending"
+  }
+}

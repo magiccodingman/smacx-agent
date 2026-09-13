@@ -1538,3 +1538,9 @@ See [multiplayer scouting acceptance](benchmarks/multiplayer-scouting-semantics.
 | Start/end ecology presentation | Two independent live turn-60 gaps → exact `gameturn.cpp` ordering proves the shared flag changes before presentation → `PERIHELION` and `PERIHELIONENDS` represented as reviewed information with current native ecology state → guarded multiplayer acknowledgement → native callback closes the exact popup → real turn-59 save replay reaches turn 60 → two DirectPlay replicas retain the active flag with units and bases unchanged → both campaigns complete verified 5/5 recovery on the installed image → AI9 receives the structured context, executes one `choice-01` acknowledgement, and save-verifies a new turn-60 checkpoint without incident. The ending label shares the compiled path but an eighty-year live replay and AI10's independent crossing are not claimed. |
 
 See [perihelion notice acceptance](benchmarks/perihelion-multiplayer-notice.md).
+
+| Multiplayer sunspot notice checkpoint | Acceptance chain and limits |
+| --- | --- |
+| Start/end communications blackout presentation | Live AI9 turn-70 gap with native duration 12 → exact `gameturn.cpp` ordering proves `SunspotDuration` changes before each presentation → `SUNSPOTS` and `NOMORESPOTS` represented as exact reviewed information with current duration and active state → guarded multiplayer acknowledgement only → exact incident-save replay reaches both notices → both DirectPlay clients dismiss each local modal and agree on duration 12 at start and 0 at end. Compiled label, reviewed fingerprint, bridge-build, action-path, recovery, opaque-choice, notification, and doctrine contracts pass. Public deployment, verified campaign recovery, and progression across the original boundary remain pending. |
+
+See [sunspot notice acceptance](benchmarks/sunspots-multiplayer-notice.md).

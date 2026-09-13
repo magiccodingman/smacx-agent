@@ -44,6 +44,13 @@ SMACX_TEST_GAME_SOURCE=/path/to/owned/game \
 SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
 SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
 PYTHONPATH=src python3 scripts/native_perihelion_notice_test.py
+
+# Requires an operator-owned pre-sunspots multiplayer save and isolated native workers.
+SMACX_SUNSPOTS_TEST_SAVE=/path/to/pre-sunspots.sav \
+SMACX_TEST_GAME_SOURCE=/path/to/owned/game \
+SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+PYTHONPATH=src python3 scripts/native_sunspots_notice_test.py
 PYTHONPATH=src python3 scripts/worker_lifecycle_serialization_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
