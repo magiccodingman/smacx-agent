@@ -12,9 +12,14 @@ import time
 
 from smacx_control import ControlPlane
 from smacx_graphiti import (
-    _environment_secret, graphiti_generation_parameters, load_runtime_config,
+    _environment_secret, graphiti_generation_parameters,
+    graphiti_provider_request_timeout_seconds, load_runtime_config,
 )
-from smacx_graphiti_worker import RecallBroker, _enabled, _scopes, _state, _heartbeat, health
+from smacx_graphiti_worker import (
+    RecallBroker, _claim_rebuild, _enabled, _heartbeat,
+    _requeue_interrupted_rebuilds, _scopes, _state,
+    graphiti_rebuild_timeout_seconds, health,
+)
 from smacx_store import ScopeViolation, SmacxStore
 
 
@@ -45,6 +50,29 @@ def main() -> int:
         )
         if queued["status"] != "queued" or control.graphiti_status()["queued_rebuilds"] != 1:
             raise AssertionError("exact-scope rebuild was not queued")
+        claimed = _claim_rebuild(store)
+        if not claimed or claimed["rebuild_id"] != queued["rebuild_id"]:
+            raise AssertionError("queued rebuild was not claimed")
+        if _requeue_interrupted_rebuilds(store) != 1:
+            raise AssertionError("interrupted rebuild was not returned to the queue")
+        with store.transaction() as connection:
+            resumed = connection.execute(
+                "SELECT status,started_unix,last_error FROM graphiti_rebuild_requests "
+                "WHERE rebuild_id=?", (queued["rebuild_id"],),
+            ).fetchone()
+        if resumed["status"] != "queued" or resumed["started_unix"] is not None or \
+                resumed["last_error"] != "projector_restarted_before_rebuild_completed":
+            raise AssertionError("interrupted rebuild recovery state was not explicit")
+        os.environ["SMACX_GRAPHITI_REQUEST_TIMEOUT_SECONDS"] = "invalid"
+        os.environ["SMACX_GRAPHITI_REBUILD_TIMEOUT_SECONDS"] = "99999"
+        try:
+            if graphiti_provider_request_timeout_seconds() != 180.0:
+                raise AssertionError("invalid provider timeout did not use the safe default")
+            if graphiti_rebuild_timeout_seconds() != 3600.0:
+                raise AssertionError("rebuild timeout was not bounded")
+        finally:
+            os.environ.pop("SMACX_GRAPHITI_REQUEST_TIMEOUT_SECONDS", None)
+            os.environ.pop("SMACX_GRAPHITI_REBUILD_TIMEOUT_SECONDS", None)
         try:
             control.request_graphiti_rebuild(
                 "match-graph-001", "agent-graph-001", "perspective-does-not-exist",
@@ -182,6 +210,8 @@ def main() -> int:
         print(json.dumps({"event": "pass", "payload": {
             "default_disabled": True,
             "exact_scope_rebuild": True,
+            "interrupted_rebuild_requeued": True,
+            "provider_and_rebuild_timeouts_bounded": True,
             "cross_scope_rejected": True,
             "failure_isolated_and_observable": True,
             "file_secret_supported": True,

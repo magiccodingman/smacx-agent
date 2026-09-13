@@ -107,3 +107,50 @@ with patch('smacx_harness_manager.time.time',side_effect=lambda:clock[0]):
 assert control.run['metadata']['provider_drain']['request_id']=='during-read'
 assert control.run['metadata']['semantic_progress_unix']==100
 print('PASS: telemetry read completion clock admits live content without resetting progress')
+
+# AI - 10 crossed the gameplay threshold during one request, completed tool
+# dispatch, then began another healthy stream. The successor may use the
+# remainder of the same episode budget; it cannot reset that budget.
+first=dict(run_id='run',request_id='first',started_unix=400,
+           observed_unix=450,last_content_unix=450,phase='streaming')
+allowed,episode=check(**base,now=465,request=first)
+assert allowed and episode['hard_deadline']==1600
+second=dict(run_id='run',request_id='second',started_unix=500,
+            observed_unix=510,last_content_unix=510,phase='streaming')
+allowed,handoff=check(**base,now=510,request=second,previous=episode)
+assert allowed and handoff['request_id']=='second'
+assert handoff['episode_started_unix']==400 and handoff['hard_deadline']==1600
+third={**second,'request_id':'third','started_unix':900,
+       'observed_unix':900,'last_content_unix':900}
+allowed,handoff=check(**base,now=900,request=third,previous=handoff)
+assert allowed and handoff['hard_deadline']==1600
+assert not check(**base,now=1600,request={**third,'observed_unix':1600,
+    'last_content_unix':1600},previous=handoff)[0]
+assert not check(**base,now=1000,request={**third,'run_id':'other'},previous=handoff)[0]
+assert not check(**base,now=1000,request={**third,'phase':'completed'},previous=handoff)[0]
+print('PASS: sequential provider requests share one fixed deliberation deadline')
+
+control=FakeControl();worker=FakeWorkerManager();manager=ContractHarnessManager(control,worker)
+manager.observed_running=True
+control.run['metadata']={'semantic_fingerprint':'turn-2','semantic_progress_unix':100,
+ 'semantic_sample_unix':400,'semantic_telemetry_unix':400,
+ 'semantic_baseline_telemetry':{'api_calls':0,'output_tokens':0}}
+request=dict(run_id='run-continuation',request_id='first',started_unix=400,
+             observed_unix=450,last_content_unix=450,phase='streaming')
+manager.telemetry=lambda _: {'telemetry':{'api_calls':3,'output_tokens':5000,
+                                           'provider_request':request}}
+with patch('smacx_harness_manager.time.time',return_value=465):
+ assert manager.reconcile_once()['operator_required']==0
+request=dict(run_id='run-continuation',request_id='second',started_unix=500,
+             observed_unix=510,last_content_unix=510,phase='streaming')
+manager.telemetry=lambda _: {'telemetry':{'api_calls':4,'output_tokens':6000,
+                                           'provider_request':request}}
+with patch('smacx_harness_manager.time.time',return_value=510):
+ assert manager.reconcile_once()['operator_required']==0
+assert control.run['metadata']['provider_drain']['request_id']=='second'
+assert control.run['metadata']['provider_drain']['hard_deadline']==1600
+request.update(observed_unix=1600,last_content_unix=1600)
+with patch('smacx_harness_manager.time.time',return_value=1600):
+ assert manager.reconcile_once()['operator_required']==1
+assert control.incidents[-1]['details']['why_blocked']=='provider_generation_budget_exceeded'
+print('PASS: production reconciliation permits handoff and enforces the original hard bound')

@@ -37,6 +37,20 @@ PYTHONPATH=src python3 scripts/strict_prompt_contract_test.py
 PYTHONPATH=src python3 scripts/operations_contract_test.py
 PYTHONPATH=src python3 scripts/capability_incident_contract_test.py
 PYTHONPATH=src python3 scripts/incident_recovery_test.py
+
+# Requires an operator-owned pre-perihelion multiplayer save and isolated native workers.
+SMACX_PERIHELION_TEST_SAVE=/path/to/turn59.sav \
+SMACX_TEST_GAME_SOURCE=/path/to/owned/game \
+SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+PYTHONPATH=src python3 scripts/native_perihelion_notice_test.py
+
+# Requires an operator-owned pre-sunspots multiplayer save and isolated native workers.
+SMACX_SUNSPOTS_TEST_SAVE=/path/to/pre-sunspots.sav \
+SMACX_TEST_GAME_SOURCE=/path/to/owned/game \
+SMACX_TEST_WORKER_IMAGE=smacx-agent-worker:test \
+SMACX_TEST_CONTROL_IMAGE=smacx-agent-control:test \
+PYTHONPATH=src python3 scripts/native_sunspots_notice_test.py
 PYTHONPATH=src python3 scripts/worker_lifecycle_serialization_test.py
 PYTHONPATH=src python3 scripts/graphiti_worker_contract_test.py
 PYTHONPATH=src python3 scripts/reference_corpus_test.py
@@ -698,6 +712,8 @@ and does not operate on a production campaign. Test-only fixtures require both
 native test-mode flags. See [acceptance](benchmarks/multiplayer-development.md).
 
 Provider liveness: `PYTHONPATH=src:scripts python3 scripts/provider_drain_window_test.py`
+
+Memory reference guidance: `PYTHONPATH=src python3 scripts/memory_reference_guidance_test.py`
 and `PYTHONPATH=src python3 scripts/provider_content_liveness_test.py` cover the
 bounded content watermark, silence, replacement, completion and hard deadline.
 

@@ -1,0 +1,67 @@
+{
+  "checkpoint": "graphiti_rebuild_interruption_recovery",
+  "observed": {
+    "campaign": "AI - 10 - Low Thinking",
+    "turn": 81,
+    "completed_perspective_rebuilds": 1,
+    "blocked_rebuild": "rebuild-93ebe0b6665a40dba2cbd84dda5eb27c",
+    "projector_health_before_restart": "unhealthy",
+    "provider_socket_after_restart": "CLOSE_WAIT",
+    "native_workers_healthy": 2,
+    "sovereign_admission": "blocked_pending_complete_memory_restore"
+  },
+  "implemented": {
+    "provider_request_timeout_seconds": 180,
+    "whole_rebuild_timeout_seconds": 900,
+    "crash_interrupted_running_state": "requeued_on_projector_start",
+    "recovery_queue_priority": "drained_before_optional_background_projection",
+    "journal_authority": "unchanged",
+    "partial_memory_admission": "forbidden"
+  },
+  "tests": {
+    "graphiti_worker_contract": "pass",
+    "exact_scope_rebuild": true,
+    "interrupted_rebuild_requeued": true,
+    "provider_and_rebuild_timeouts_bounded": true,
+    "failure_isolated_and_observable": true
+  },
+  "deployed": {
+    "graphiti_image_id": "sha256:6456944b0667c87f5f13d8ddfdac9a79c44b023b07570ccb2dfb757d4c207bf5",
+    "interrupted_rebuild": {
+      "rebuild_id": "rebuild-93ebe0b6665a40dba2cbd84dda5eb27c",
+      "status": "completed",
+      "last_error": null
+    },
+    "verified_recovery_rebuilds": [
+      {
+        "rebuild_id": "rebuild-003f81e490024904be2c34fbd93ccac1",
+        "status": "completed",
+        "last_error": null
+      },
+      {
+        "rebuild_id": "rebuild-d30fa5d691f34a298fbfb5625df4eb31",
+        "status": "completed",
+        "last_error": null,
+        "claimed_immediately_after_priority_projector_start": true
+      }
+    ],
+    "ai10_operator_health": {
+      "turn": 81,
+      "state": "observed_active",
+      "active_sovereign_runs": 2,
+      "live_sovereign_processes": 2,
+      "healthy_native_mcp_pairs": 2,
+      "run_verification_errors": 0,
+      "active_incidents": 0
+    },
+    "ai9_control_campaign": {
+      "state": "observed_active",
+      "turn_after_repair": 76,
+      "active_incidents": 0
+    }
+  },
+  "limits": {
+    "sustained_ai10_progress_after_turn_81": "pending",
+    "deliberately_forced_provider_timeout": "not_run_against_public_campaign"
+  }
+}
